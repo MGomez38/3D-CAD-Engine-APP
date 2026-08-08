@@ -52,13 +52,14 @@ button.small { padding: 3px 8px; font-size: 12px; color: var(--text-muted); }
   border-right: 1px solid var(--border);
 }
 .tool-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  width: 58px; padding: 7px 2px 5px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  width: 56px; padding: 5px 2px 4px;
   border-radius: 6px;
   color: var(--text-muted);
 }
-.tool-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.6; }
-.tool-btn span { font-size: 10px; }
+.tool-btn svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.tool-btn span { font-size: 9px; }
+#toolbar { overflow-y: auto; }
 .tool-btn.active { background: var(--accent-dim); color: #fff; border-color: var(--accent); }
 .tool-btn:hover { color: var(--text); }
 
@@ -123,8 +124,12 @@ table.cutlist { width: 100%; border-collapse: collapse; font-size: 11px; margin-
 #status-hint { color: var(--text-muted); }
 #status-coords { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 #vcb-label { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+.views select {
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;
+}
 #vcb {
-  width: 130px; background: var(--bg); color: var(--text);
+  width: 190px; background: var(--bg); color: var(--text);
   border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px;
   text-align: right; font-variant-numeric: tabular-nums;
 }

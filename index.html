@@ -26,11 +26,18 @@
         </div>
         <div class="spacer"></div>
         <div class="views">
+          <select id="display-style" title="Display style">
+            <option value="shaded-edges">Shaded + Edges</option>
+            <option value="shaded">Shaded</option>
+            <option value="xray">X-Ray</option>
+            <option value="wireframe">Wireframe</option>
+          </select>
           <button data-view="iso" title="Isometric view">Iso</button>
           <button data-view="top" title="Plan view">Top</button>
           <button data-view="front" title="Front elevation">Front</button>
           <button data-view="right" title="Right elevation">Right</button>
           <button id="btn-zoom-fit" title="Zoom to fit (Shift+Z)">Fit</button>
+          <button id="btn-settings" title="Settings">⚙</button>
         </div>
       </header>
 
@@ -69,8 +76,8 @@
         <span id="status-hint">Ready</span>
         <div class="spacer"></div>
         <span id="status-coords"></span>
-        <label id="vcb-label">Measurements
-          <input id="vcb" autocomplete="off" spellcheck="false" placeholder="e.g. 3' 6&quot; or 42">
+        <label id="vcb-label">Command / Measurements
+          <input id="vcb" autocomplete="off" spellcheck="false" placeholder="3' 6&quot; · 24,12 · @48&lt;45 · L, REC, W…">
         </label>
         <select id="units-select" title="Display units">
           <option value="arch">Feet & Inches</option>

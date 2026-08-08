@@ -10,7 +10,7 @@ export function buildCutList(model) {
   let totalWeight = 0;
 
   for (const e of model.entities.values()) {
-    if (e.type !== 'solid') continue;
+    if (e.type !== 'solid' || e.noBom) continue;
     if (!model.layer(e.layerId).visible) continue;
     const mat = materialById(e.material);
     const length = Math.abs(e.depth);

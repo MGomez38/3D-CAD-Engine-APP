@@ -10,6 +10,40 @@ plus DXF flat patterns for the plasma/laser table.
 Built with [Three.js](https://threejs.org/) and [Vite](https://vitejs.dev/) —
 no plugins, no backend, runs entirely in the browser.
 
+## Professional workflow
+
+**Command line (AutoCAD-style).** The Command box accepts tool aliases and
+precise coordinates:
+
+| Input | Meaning |
+|-------|---------|
+| `L`, `REC`, `C`, `POL`, `PP`, `M`, `RO`, `E`, `DIM`, `W`, `DOOR`, `STEEL` | activate tools |
+| `24,12` | absolute point (x = east, y = north, inches or `3'6"`) |
+| `@24,12` | relative to the last point |
+| `@48<45` | polar: 48" at 45° |
+| `Z` / `FIT`, `U` / `REDO`, `SHEET`, `DXF`, `STL`, `SAVE`, `SETTINGS` | actions |
+
+Draw an entire floor plan without touching the mouse:
+`W` ⏎ `0,0` ⏎ `@20',0` ⏎ `@0,12'` ⏎ `@-20',0` ⏎ `@0,-12'` ⏎
+
+**Walls & openings (Revit-style).** The Wall tool (`W`) draws walls in plan at
+your default height/thickness (Settings) and chains corner to corner. The
+Door/Window tool (`O`) offers standard presets (3'0"×6'8" door, sliding sizes,
+garage door…) or custom sizes and cuts a real opening into any wall — the
+geometry, drawings, and DXF all update.
+
+**Parametric editing (Fusion-style).** Select any object and edit its
+dimensions in the Entity panel — width, height, radius, length/thickness —
+plus part name, material, and layer. Walls keep their door/window openings
+anchored when resized.
+
+**Navigation.** A clickable orientation gizmo sits in the bottom-right corner
+(click an axis to snap the view). Display styles: Shaded + Edges, Shaded,
+X-Ray, and Wireframe.
+
+**Autosave.** Work is continuously saved to the browser; after a crash or
+accidental tab close you'll be offered a restore on relaunch.
+
 ## Metal fabrication workflow
 
 1. **Steel tool (`I`)** — pick a stock profile and place members with a click:

@@ -21,6 +21,28 @@ class SketchTool extends Tool {
     this.app.snapper?.hide();
   }
 
+  /**
+   * AutoCAD-style typed coordinates from the command line.
+   * coord = {x,y,rel} or {polar:true,d,a}. Feeds placePoint2().
+   */
+  onCoordinate(coord) {
+    if (!this.plane) this.beginOnPlane(GROUND_PLANE());
+    const last = this.lastWorld ? this.toPlane(this.lastWorld.clone()) : new THREE.Vector2(0, 0);
+    let p2;
+    if (coord.polar) {
+      const a = (coord.a * Math.PI) / 180;
+      p2 = last.clone().add(new THREE.Vector2(Math.cos(a) * coord.d, Math.sin(a) * coord.d));
+    } else if (coord.rel) {
+      p2 = last.clone().add(new THREE.Vector2(coord.x, coord.y));
+    } else {
+      p2 = new THREE.Vector2(coord.x, coord.y);
+    }
+    this.placePoint2(p2);
+    this.app.ui.setHint(this.hint);
+  }
+
+  placePoint2(_p2) {} // implemented by each tool
+
   resolvePoint(ev) {
     const app = this.app;
     if (!this.plane) {
@@ -48,10 +70,12 @@ class SketchTool extends Tool {
 // ---------------------------------------------------------------------------
 
 export class LineTool extends SketchTool {
+  acceptsAbsoluteCoords = true;
+
   get hint() {
     return this.points.length
-      ? 'Click next point — click the first point to close the shape · type a length + Enter · Esc to cancel'
-      : 'Line: click to start a shape on the ground or on a face';
+      ? 'Click next point — close on the first point · length, "x,y", "@dx,dy", or "@d<angle" + Enter · Esc cancels'
+      : 'Line: click to start a shape on the ground or on a face (or type "x,y" + Enter)';
   }
 
   onPointerMove(ev) {
@@ -73,8 +97,11 @@ export class LineTool extends SketchTool {
     const { snap, plane } = this.resolvePoint(ev);
     if (!snap) return;
     if (!this.plane) this.beginOnPlane(plane);
+    this.placePoint2(this.toPlane(snap.point));
+    this.app.ui.setHint(this.hint);
+  }
 
-    const p2 = this.toPlane(snap.point);
+  placePoint2(p2) {
     // close the loop?
     if (this.points.length >= 3 && p2.distanceTo(this.points[0]) < 1.5) {
       this.finish();
@@ -82,7 +109,6 @@ export class LineTool extends SketchTool {
     }
     this.points.push(p2);
     this.lastWorld = planeToWorld(this.plane, p2.x, p2.y);
-    this.app.ui.setHint(this.hint);
   }
 
   onVCB(text) {
@@ -93,9 +119,7 @@ export class LineTool extends SketchTool {
     if (dir.lengthSq() < 1e-9) return;
     dir.normalize();
     const world = this.lastWorld.clone().addScaledVector(dir, len);
-    const p2 = this.toPlane(world);
-    this.points.push(p2);
-    this.lastWorld = planeToWorld(this.plane, p2.x, p2.y);
+    this.placePoint2(this.toPlane(world));
   }
 
   finish() {
@@ -144,13 +168,17 @@ export class RectTool extends SketchTool {
     if (ev.button !== 0) return;
     const { snap, plane } = this.resolvePoint(ev);
     if (!snap) return;
+    if (!this.plane) this.beginOnPlane(plane);
+    this.placePoint2(this.toPlane(snap.point));
+  }
+
+  placePoint2(p2) {
     if (!this.corner) {
-      this.beginOnPlane(plane);
-      this.corner = this.toPlane(snap.point);
-      this.lastWorld = snap.point.clone();
+      this.corner = p2;
+      this.lastWorld = planeToWorld(this.plane, p2.x, p2.y);
       this.app.ui.setHint(this.hint);
     } else {
-      this.commit(this.toPlane(snap.point));
+      this.commit(p2);
     }
   }
 
@@ -215,13 +243,17 @@ export class CircleTool extends SketchTool {
     if (ev.button !== 0) return;
     const { snap, plane } = this.resolvePoint(ev);
     if (!snap) return;
+    if (!this.plane) this.beginOnPlane(plane);
+    this.placePoint2(this.toPlane(snap.point));
+  }
+
+  placePoint2(p2) {
     if (!this.center) {
-      this.beginOnPlane(plane);
-      this.center = this.toPlane(snap.point);
-      this.lastWorld = snap.point.clone();
+      this.center = p2;
+      this.lastWorld = planeToWorld(this.plane, p2.x, p2.y);
       this.app.ui.setHint(this.hint);
     } else {
-      this.commit(this.toPlane(snap.point).distanceTo(this.center));
+      this.commit(p2.distanceTo(this.center));
     }
   }
 
@@ -242,5 +274,84 @@ export class CircleTool extends SketchTool {
     });
     this.reset();
     this.app.ui.setHint('Circle drawn. Push/Pull (P) to extrude.');
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+export class PolygonTool extends SketchTool {
+  sides = 6;
+
+  get hint() {
+    return this.center
+      ? `Polygon (${this.sides} sides): click to set the radius · type a radius, or "s8" to change sides`
+      : `Polygon (${this.sides} sides): click the center · type "s8" + Enter to change sides`;
+  }
+
+  reset() { super.reset(); this.center = null; }
+
+  onPointerMove(ev) {
+    const { snap } = this.resolvePoint(ev);
+    if (!snap) return;
+    if (this.center) {
+      const c2 = this.toPlane(snap.point);
+      const r = c2.distanceTo(this.center);
+      this.app.preview.showPolyline(this.outline(r));
+      this.app.ui.setCursorTip(ev, `R ${Units.format(r)}`);
+    }
+  }
+
+  outline(r) {
+    const pts = [];
+    for (let i = 0; i <= this.sides; i++) {
+      const a = (i / this.sides) * Math.PI * 2 + Math.PI / 2;
+      pts.push(planeToWorld(this.plane,
+        this.center.x + Math.cos(a) * r,
+        this.center.y + Math.sin(a) * r));
+    }
+    return pts;
+  }
+
+  onPointerDown(ev) {
+    if (ev.button !== 0) return;
+    const { snap, plane } = this.resolvePoint(ev);
+    if (!snap) return;
+    if (!this.plane) this.beginOnPlane(plane);
+    this.placePoint2(this.toPlane(snap.point));
+  }
+
+  placePoint2(p2) {
+    if (!this.center) {
+      this.center = p2;
+      this.lastWorld = planeToWorld(this.plane, p2.x, p2.y);
+      this.app.ui.setHint(this.hint);
+    } else {
+      this.commit(p2.distanceTo(this.center));
+    }
+  }
+
+  onVCB(text) {
+    const sides = /^s(\d+)$/i.exec(String(text).trim());
+    if (sides) {
+      const n = parseInt(sides[1]);
+      if (n >= 3 && n <= 64) { this.sides = n; this.app.ui.setHint(this.hint); }
+      return;
+    }
+    if (!this.center) return;
+    const r = Units.parse(text);
+    if (r != null && r > 0) this.commit(r);
+  }
+
+  commit(r) {
+    if (r < 0.05) return;
+    this.app.history.checkpoint();
+    const pts = [];
+    for (let i = 0; i < this.sides; i++) {
+      const a = (i / this.sides) * Math.PI * 2 + Math.PI / 2;
+      pts.push([this.center.x + Math.cos(a) * r, this.center.y + Math.sin(a) * r]);
+    }
+    this.app.model.addProfile({ kind: 'poly', plane: this.plane, points: pts });
+    this.reset();
+    this.app.ui.setHint('Polygon drawn. Push/Pull (P) to extrude.');
   }
 }

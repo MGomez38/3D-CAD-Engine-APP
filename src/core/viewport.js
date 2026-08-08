@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
 
 // The 3D viewport: renderer, camera, controls, ground grid, lights,
 // and raycasting helpers. Lengths are inches; ground is the XZ plane.
@@ -38,6 +39,10 @@ export class Viewport {
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.55;
     pmrem.dispose();
+
+    // clickable orientation gizmo (bottom-right), Fusion-style
+    this.viewHelper = new ViewHelper(this.camera, canvas);
+    this.viewHelper.center = this.controls.target;
 
     this.raycaster = new THREE.Raycaster();
     this.raycaster.params.Line.threshold = 2;
@@ -167,11 +172,17 @@ export class Viewport {
   }
 
   startLoop(onFrame) {
+    this.renderer.autoClear = false;
+    const clock = new THREE.Clock();
     const tick = () => {
       requestAnimationFrame(tick);
+      const delta = clock.getDelta();
+      if (this.viewHelper.animating) this.viewHelper.update(delta);
       this.controls.update();
       onFrame?.();
+      this.renderer.clear();
       this.renderer.render(this.scene, this.camera);
+      this.viewHelper.render(this.renderer);
     };
     tick();
   }

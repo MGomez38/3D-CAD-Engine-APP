@@ -9,23 +9,64 @@ import { History } from './core/history.js';
 import { Preview } from './core/preview.js';
 import { Units } from './core/units.js';
 
+import { Settings, loadSettings, saveSettings } from './core/settings.js';
 import { buildToolbar, TOOLS } from './ui/toolbar.js';
 import { buildLayersPanel, renderEntityInfo, buildCutListPanel } from './ui/panels.js';
 import { showSheetDialog } from './ui/sheetDialog.js';
 import { showInsertDialog } from './ui/insertDialog.js';
+import { showOpeningDialog } from './ui/openingDialog.js';
+import { showSettingsDialog } from './ui/settingsDialog.js';
 import { modelToDXF } from './lib/dxf.js';
 
-import { LineTool, RectTool, CircleTool } from './tools/drawTools.js';
+import { LineTool, RectTool, CircleTool, PolygonTool } from './tools/drawTools.js';
 import { InsertTool } from './tools/insertTool.js';
+import { WallTool, OpeningTool } from './tools/wallTool.js';
 import { translateEntity } from './tools/common.js';
 import {
   SelectTool, PushPullTool, MoveTool, RotateTool, DimensionTool, EraserTool,
 } from './tools/modifyTools.js';
 
+// AutoCAD-style command aliases → tool ids
+const TOOL_COMMANDS = {
+  line: 'line', l: 'line', pline: 'line', pl: 'line',
+  rect: 'rect', rec: 'rect', rectangle: 'rect',
+  circle: 'circle', c: 'circle',
+  polygon: 'polygon', pol: 'polygon', pg: 'polygon',
+  pushpull: 'pushpull', pp: 'pushpull', extrude: 'pushpull', ex: 'pushpull',
+  move: 'move', m: 'move',
+  rotate: 'rotate', ro: 'rotate',
+  erase: 'eraser', e: 'eraser',
+  dim: 'dimension', dimension: 'dimension', dli: 'dimension',
+  wall: 'wall', w: 'wall',
+  opening: 'opening', door: 'opening', window: 'opening',
+  steel: 'insert', insert: 'insert', i: 'insert',
+  select: 'select', sel: 'select',
+};
+
+/** Parse "24,12" / "@24,12" / "@48<45" AutoCAD-style coordinate input. */
+function parseCoordInput(text) {
+  const t = String(text).trim();
+  const rel = t.startsWith('@');
+  const body = rel ? t.slice(1) : t;
+  const polar = body.match(/^(-?[\d.'"\s/]+)<(-?[\d.]+)$/);
+  if (polar) {
+    const d = Units.parse(polar[1]);
+    const a = parseFloat(polar[2]);
+    if (d == null || isNaN(a)) return null;
+    return { polar: true, d, a };
+  }
+  const parts = body.split(',');
+  if (parts.length !== 2) return null;
+  const x = Units.parse(parts[0]), y = Units.parse(parts[1]);
+  if (x == null || y == null) return null;
+  return { rel, x, y };
+}
+
 const $ = (sel) => document.querySelector(sel);
 
 class App {
   constructor() {
+    loadSettings();
     this.viewport = new Viewport($('#viewport'));
     this.model = new Model(this.viewport.scene);
     this.snapper = new Snapper(this.viewport, this.model);
@@ -41,6 +82,9 @@ class App {
       circle: new CircleTool(this),
       pushpull: new PushPullTool(this),
       insert: new InsertTool(this),
+      polygon: new PolygonTool(this),
+      wall: new WallTool(this),
+      opening: new OpeningTool(this),
       move: new MoveTool(this),
       rotate: new RotateTool(this),
       dimension: new DimensionTool(this),
@@ -69,13 +113,69 @@ class App {
       this.layersUI.render();
       this.cutListUI.render();
       this.renderEntityPanel();
+      this.applyDisplayStyle();
+      this.scheduleAutosave();
     };
 
     this.bindEvents();
     this.setTool('line');
+    this.restoreAutosave();
     this.model.changed();
     this.viewport.startLoop();
     this.ui.setHint('Welcome! Draw a rectangle (R), then Push/Pull (P) to make it 3D. Middle-drag orbits, right-drag pans, scroll zooms.');
+  }
+
+  // ---- autosave -----------------------------------------------------------
+
+  scheduleAutosave() {
+    if (!Settings.autosave) return;
+    clearTimeout(this._autosaveTimer);
+    this._autosaveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem('cadshop-autosave', JSON.stringify(this.model.serialize()));
+      } catch { /* storage full */ }
+    }, 800);
+  }
+
+  restoreAutosave() {
+    try {
+      const saved = localStorage.getItem('cadshop-autosave');
+      if (!saved) return;
+      const data = JSON.parse(saved);
+      if (!data.entities?.length) return;
+      if (confirm(`Restore your autosaved project (${data.entities.length} objects)?`)) {
+        this.model.load(data);
+        this.syncProjectInfoInputs();
+        this.viewport.zoomToFit(this.modelBounds());
+      } else {
+        localStorage.removeItem('cadshop-autosave');
+      }
+    } catch { /* corrupted autosave */ }
+  }
+
+  // ---- display styles -----------------------------------------------------
+
+  applyDisplayStyle() {
+    const style = Settings.displayStyle;
+    for (const [id, obj] of this.model.objects) {
+      const e = this.model.entities.get(id);
+      if (!e || e.type === 'dimension') continue;
+      const isProfile = e.type === 'profile';
+      obj.traverse(c => {
+        if (c.isMesh && c.material) {
+          const m = c.material;
+          if (style === 'xray') {
+            m.transparent = true; m.opacity = 0.4; m.depthWrite = false;
+          } else if (style === 'wireframe') {
+            m.transparent = true; m.opacity = 0.05; m.depthWrite = false;
+          } else {
+            m.transparent = isProfile; m.opacity = isProfile ? 0.85 : 1; m.depthWrite = true;
+          }
+        } else if (c.isLineSegments) {
+          c.visible = style !== 'shaded';
+        }
+      });
+    }
   }
 
   setTool(id) {
@@ -87,7 +187,51 @@ class App {
       }, this.tools.insert.config);
       return;
     }
+    if (id === 'opening') {
+      showOpeningDialog((cfg) => {
+        this.tools.opening.config = cfg;
+        this._activateTool('opening');
+      }, this.tools.opening.config);
+      return;
+    }
     this._activateTool(id);
+  }
+
+  /** AutoCAD-style command line: returns true if the text was consumed. */
+  handleCommand(text) {
+    const lower = text.trim().toLowerCase();
+    if (!lower) return false;
+
+    if (TOOL_COMMANDS[lower]) { this.setTool(TOOL_COMMANDS[lower]); return true; }
+
+    const ACTIONS = {
+      u: () => { this.history.undo(); this.select(null); },
+      undo: () => { this.history.undo(); this.select(null); },
+      redo: () => { this.history.redo(); this.select(null); },
+      z: () => this.viewport.zoomToFit(this.modelBounds()),
+      zoom: () => this.viewport.zoomToFit(this.modelBounds()),
+      fit: () => this.viewport.zoomToFit(this.modelBounds()),
+      sheet: () => showSheetDialog(this.model),
+      layout: () => showSheetDialog(this.model),
+      dxf: () => this.exportDXF(),
+      stl: () => this.exportSTL(),
+      save: () => this.saveProject(),
+      settings: () => showSettingsDialog(),
+      config: () => showSettingsDialog(),
+      units: () => $('#units-select').focus(),
+    };
+    if (ACTIONS[lower]) { ACTIONS[lower](); return true; }
+
+    // coordinate entry: @dx,dy and @d<a always; plain x,y only for tools that opt in
+    const coord = parseCoordInput(text);
+    if (coord && this.activeTool?.onCoordinate) {
+      const explicit = coord.rel || coord.polar;
+      if (explicit || this.activeTool.acceptsAbsoluteCoords) {
+        this.activeTool.onCoordinate(coord);
+        return true;
+      }
+    }
+    return false;
   }
 
   _activateTool(id) {
@@ -164,7 +308,9 @@ class App {
   bindEvents() {
     const canvas = this.viewport.canvas;
     canvas.addEventListener('pointerdown', (ev) => {
-      if (ev.button === 0) this.activeTool?.onPointerDown(ev);
+      if (ev.button !== 0) return;
+      if (this.viewport.viewHelper.handleClick(ev)) return; // orientation gizmo
+      this.activeTool?.onPointerDown(ev);
     });
     canvas.addEventListener('pointermove', (ev) => {
       this.activeTool?.onPointerMove(ev);
@@ -254,9 +400,9 @@ class App {
       ev.stopPropagation();
       if (ev.key === 'Enter') {
         const text = vcb.value.trim();
-        if (text) this.activeTool?.onVCB(text);
+        if (text && !this.handleCommand(text)) this.activeTool?.onVCB(text);
         vcb.value = '';
-        vcb.blur();
+        if (!TOOL_COMMANDS[text.toLowerCase()]) vcb.blur();
       } else if (ev.key === 'Escape') {
         vcb.value = '';
         vcb.blur();
@@ -282,6 +428,14 @@ class App {
       this.history.checkpoint();
       this.model.clear();
       this.select(null);
+      localStorage.removeItem('cadshop-autosave');
+    });
+    $('#btn-settings').addEventListener('click', () => showSettingsDialog());
+    $('#display-style').value = Settings.displayStyle;
+    $('#display-style').addEventListener('change', (ev) => {
+      Settings.displayStyle = ev.target.value;
+      saveSettings();
+      this.applyDisplayStyle();
     });
     $('#btn-save').addEventListener('click', () => this.saveProject());
     $('#btn-open').addEventListener('click', () => $('#file-open').click());
@@ -383,4 +537,5 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-new App();
+// exposed for debugging and scripted testing
+window.cadshop = new App();

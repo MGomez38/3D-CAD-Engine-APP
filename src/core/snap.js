@@ -1,12 +1,12 @@
 import * as THREE from 'three';
+import { Settings } from './settings.js';
 
 // Inference / snapping engine.
 //
 // Priority: entity vertices & midpoints (screen-space proximity) →
 // axis inference from a reference point → grid snap on the sketch plane.
 
-const SNAP_PX = 9;
-export const GRID_SNAP_IN = 1; // snap increment on the sketch plane, inches
+const SNAP_PX = 9; // Settings.gridSnap controls the sketch-plane snap increment
 
 export class Snapper {
   constructor(viewport, model) {
@@ -104,7 +104,7 @@ export class Snapper {
 
   gridSnapAlongAxis(origin, dir, p) {
     const d = p.clone().sub(origin).dot(dir);
-    const snapped = Math.round(d / GRID_SNAP_IN) * GRID_SNAP_IN;
+    const snapped = Math.round(d / Settings.gridSnap) * Settings.gridSnap;
     return origin.clone().addScaledVector(dir, snapped);
   }
 
@@ -115,7 +115,7 @@ export class Snapper {
       const dir = new THREE.Vector3(
         axis === 'x' ? 1 : 0, axis === 'y' ? 1 : 0, axis === 'z' ? 1 : 0);
       if (Math.abs(plane.normal.dot(dir)) < 0.99) {
-        out[axis] = Math.round(out[axis] / GRID_SNAP_IN) * GRID_SNAP_IN;
+        out[axis] = Math.round(out[axis] / Settings.gridSnap) * Settings.gridSnap;
       }
     }
     plane.projectPoint(out, out);

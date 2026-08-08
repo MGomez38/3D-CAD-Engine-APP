@@ -15,6 +15,21 @@ export function buildLayersPanel(listEl, addBtn, model, history) {
       const swatch = document.createElement('span');
       swatch.className = 'swatch';
       swatch.style.background = layer.color;
+      swatch.title = 'Click to change color';
+      swatch.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const picker = document.createElement('input');
+        picker.type = 'color';
+        picker.value = layer.color;
+        picker.addEventListener('input', () => {
+          layer.color = picker.value;
+          for (const e of model.entities.values()) {
+            if (e.layerId === layer.id) model.rebuildObject(e);
+          }
+          model.changed();
+        });
+        picker.click();
+      });
 
       const name = document.createElement('span');
       name.className = 'name';
@@ -115,8 +130,45 @@ export function renderEntityInfo(el, model, selection, { onEdit } = {}) {
     row('Type', 'Dimension');
     row('Length', e.label);
   }
-  row('Layer', layer.name);
   el.innerHTML = rows.join('');
+
+  // ---- parametric edits (Fusion-style: change dimensions after the fact) ----
+  const addField = (labelText, value, apply) => {
+    const label = document.createElement('label');
+    label.textContent = labelText + ' ';
+    const input = document.createElement('input');
+    input.value = value;
+    input.addEventListener('change', () => {
+      const v = Units.parse(input.value);
+      if (v == null || v <= 0) return;
+      apply(v);
+    });
+    input.addEventListener('keydown', ev => ev.stopPropagation());
+    label.appendChild(input);
+    el.appendChild(label);
+  };
+
+  if (e.type === 'solid' || e.type === 'profile') {
+    if (e.kind === 'circle') {
+      addField('Radius', Units.format(e.radius), (r) => {
+        const patch = { radius: r };
+        if (e.innerRadius > 0) {
+          patch.innerRadius = Math.max(r - (e.radius - e.innerRadius), 0.01);
+        }
+        onEdit?.(e.id, patch);
+      });
+    } else if (isAxisRect(e.points)) {
+      const { minX, maxX, minY, maxY } = bbox2(e.points);
+      addField('Width', Units.format(maxX - minX), (w) =>
+        onEdit?.(e.id, scaleRect(e.points, e.holes, w, null)));
+      addField('Height', Units.format(maxY - minY), (h) =>
+        onEdit?.(e.id, scaleRect(e.points, e.holes, null, h)));
+    }
+    if (e.type === 'solid') {
+      addField(e.noBom ? 'Thickness' : 'Length', Units.format(Math.abs(e.depth)), (len) =>
+        onEdit?.(e.id, { depth: (e.depth < 0 ? -1 : 1) * len }));
+    }
+  }
 
   // editable part name + material for solids
   if (e.type === 'solid') {
@@ -126,6 +178,7 @@ export function renderEntityInfo(el, model, selection, { onEdit } = {}) {
     nameInput.value = e.name || '';
     nameInput.placeholder = e.spec || 'e.g. Top rail';
     nameInput.addEventListener('change', () => onEdit?.(e.id, { name: nameInput.value.trim() }));
+    nameInput.addEventListener('keydown', ev => ev.stopPropagation());
     nameLabel.appendChild(nameInput);
     el.appendChild(nameLabel);
 
@@ -142,6 +195,58 @@ export function renderEntityInfo(el, model, selection, { onEdit } = {}) {
     matLabel.appendChild(matSel);
     el.appendChild(matLabel);
   }
+
+  // layer reassignment for any entity
+  const layerLabel = document.createElement('label');
+  layerLabel.innerHTML = 'Layer ';
+  const layerSel = document.createElement('select');
+  for (const l of model.layers) {
+    const o = document.createElement('option');
+    o.value = l.id; o.textContent = l.name;
+    layerSel.appendChild(o);
+  }
+  layerSel.value = e.layerId;
+  layerSel.addEventListener('change', () => onEdit?.(e.id, { layerId: layerSel.value }));
+  layerLabel.appendChild(layerSel);
+  el.appendChild(layerLabel);
+}
+
+function bbox2(points) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of points) {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  return { minX, maxX, minY, maxY };
+}
+
+function isAxisRect(points) {
+  if (!points || points.length !== 4) return false;
+  const xs = new Set(points.map(p => Math.round(p[0] * 64)));
+  const ys = new Set(points.map(p => Math.round(p[1] * 64)));
+  return xs.size === 2 && ys.size === 2;
+}
+
+/**
+ * Resize a rectangle to a new width/height about its min corner. Holes
+ * (door/window openings) keep their own size — only their centers shift
+ * proportionally so they stay inside the resized face.
+ */
+function scaleRect(points, holes, newW, newH) {
+  const { minX, maxX, minY, maxY } = bbox2(points);
+  const sx = newW != null ? newW / (maxX - minX) : 1;
+  const sy = newH != null ? newH / (maxY - minY) : 1;
+  const outer = points.map(([x, y]) => [minX + (x - minX) * sx, minY + (y - minY) * sy]);
+  const movedHoles = (holes || []).map(hole => {
+    const hb = bbox2(hole);
+    const cx = (hb.minX + hb.maxX) / 2, cy = (hb.minY + hb.maxY) / 2;
+    const dx = (minX + (cx - minX) * sx) - cx;
+    const dy = hole.some(([, y]) => Math.abs(y - minY) < 0.01)
+      ? 0 // doors stay on the floor
+      : (minY + (cy - minY) * sy) - cy;
+    return hole.map(([x, y]) => [x + dx, y + dy]);
+  });
+  return { points: outer, holes: movedHoles };
 }
 
 // ---------------------------------------------------------------------------
