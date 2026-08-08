@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // The 3D viewport: renderer, camera, controls, ground grid, lights,
 // and raycasting helpers. Lengths are inches; ground is the XZ plane.
@@ -31,6 +32,12 @@ export class Viewport {
     this.controls.update();
 
     this.buildEnvironment();
+
+    // image-based lighting so metallic materials read correctly
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.55;
+    pmrem.dispose();
 
     this.raycaster = new THREE.Raycaster();
     this.raycaster.params.Line.threshold = 2;

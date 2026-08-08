@@ -1,5 +1,7 @@
 import { Units } from '../core/units.js';
-import { profileCorners } from '../core/model.js';
+import { profileCorners, computeArea } from '../core/model.js';
+import { MATERIALS, materialById } from '../lib/materials.js';
+import { buildCutList, cutListCSV } from '../lib/cutlist.js';
 
 const LAYER_COLORS = ['#8fb8d8', '#d8a98f', '#9fd88f', '#d88fbe', '#d8d08f', '#8f93d8', '#7fc8c0'];
 
@@ -52,20 +54,43 @@ export function buildLayersPanel(listEl, addBtn, model, history) {
   return { render };
 }
 
-export function renderEntityInfo(el, model, id) {
-  if (!id || !model.entities.get(id)) {
+// ---------------------------------------------------------------------------
+// Entity info — editable name & material for solids, weight readout,
+// summary for multi-selections.
+
+export function renderEntityInfo(el, model, selection, { onEdit } = {}) {
+  const ids = [...(selection || [])].filter(id => model.entities.get(id));
+  if (!ids.length) {
     el.innerHTML = '<div class="muted">Nothing selected</div>';
     return;
   }
-  const e = model.entities.get(id);
+
+  if (ids.length > 1) {
+    let weight = 0, solids = 0;
+    for (const id of ids) {
+      const e = model.entities.get(id);
+      if (e.type === 'solid') {
+        solids++;
+        weight += computeArea(e) * Math.abs(e.depth) * materialById(e.material).density;
+      }
+    }
+    el.innerHTML =
+      `<div><b>${ids.length}</b> objects selected</div>` +
+      (solids ? `<div>Total weight: <b>${weight.toFixed(1)} lb</b></div>` : '') +
+      '<div class="muted">Move/Rotate act on the whole selection</div>';
+    return;
+  }
+
+  const e = model.entities.get(ids[0]);
   const layer = model.layer(e.layerId);
   const rows = [];
   const row = (k, v) => rows.push(`<div>${k}: <b>${v}</b></div>`);
 
   if (e.type === 'solid' || e.type === 'profile') {
-    row('Type', e.type === 'solid' ? 'Solid' : 'Shape');
+    row('Type', e.type === 'solid' ? (e.spec || 'Solid') : 'Shape');
     if (e.kind === 'circle') {
-      row('Radius', Units.format(e.radius));
+      row('Diameter', Units.format(e.radius * 2));
+      if (e.innerRadius > 0) row('Wall', Units.format(e.radius - e.innerRadius));
     } else {
       const pts = profileCorners(e);
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -75,22 +100,16 @@ export function renderEntityInfo(el, model, id) {
       }
       row('Size', `${Units.format(maxX - minX)} × ${Units.format(maxY - minY)}`);
     }
-    if (e.type === 'solid') row('Depth', Units.format(Math.abs(e.depth)));
-    // area of the base
-    let area;
-    if (e.kind === 'circle') area = Math.PI * e.radius * e.radius;
-    else {
-      const pts = profileCorners(e);
-      area = 0;
-      for (let i = 0; i < pts.length; i++) {
-        const a = pts[i], b = pts[(i + 1) % pts.length];
-        area += a.x * b.y - b.x * a.y;
-      }
-      area = Math.abs(area) / 2;
-    }
-    row('Base area', Units.formatArea(area));
+    if (e.type === 'solid') row('Length', Units.format(Math.abs(e.depth)));
+    const area = computeArea(e);
+    row('Section area', `${area.toFixed(2)} sq in`);
     if (e.type === 'solid') {
-      row('Volume', `${(area * Math.abs(e.depth) / 1728).toFixed(2)} cu ft`);
+      const mat = materialById(e.material);
+      if (mat.density > 0) {
+        row('Weight', `${(area * Math.abs(e.depth) * mat.density).toFixed(1)} lb`);
+      } else {
+        row('Volume', `${(area * Math.abs(e.depth) / 1728).toFixed(2)} cu ft`);
+      }
     }
   } else if (e.type === 'dimension') {
     row('Type', 'Dimension');
@@ -98,4 +117,70 @@ export function renderEntityInfo(el, model, id) {
   }
   row('Layer', layer.name);
   el.innerHTML = rows.join('');
+
+  // editable part name + material for solids
+  if (e.type === 'solid') {
+    const nameLabel = document.createElement('label');
+    nameLabel.innerHTML = 'Part name ';
+    const nameInput = document.createElement('input');
+    nameInput.value = e.name || '';
+    nameInput.placeholder = e.spec || 'e.g. Top rail';
+    nameInput.addEventListener('change', () => onEdit?.(e.id, { name: nameInput.value.trim() }));
+    nameLabel.appendChild(nameInput);
+    el.appendChild(nameLabel);
+
+    const matLabel = document.createElement('label');
+    matLabel.innerHTML = 'Material ';
+    const matSel = document.createElement('select');
+    for (const m of MATERIALS) {
+      const o = document.createElement('option');
+      o.value = m.id; o.textContent = m.name;
+      matSel.appendChild(o);
+    }
+    matSel.value = e.material || 'generic';
+    matSel.addEventListener('change', () => onEdit?.(e.id, { material: matSel.value }));
+    matLabel.appendChild(matSel);
+    el.appendChild(matLabel);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cut list panel
+
+export function buildCutListPanel(el, csvBtn, model) {
+  function render() {
+    const { rows, totalWeight } = buildCutList(model);
+    if (!rows.length) {
+      el.innerHTML = '<div class="muted">No parts yet</div>';
+      return;
+    }
+    const cells = rows.map(r => `
+      <tr>
+        <td>${escapeHtml(r.desc)}</td>
+        <td class="num">${Units.format(r.length)}</td>
+        <td class="num">${r.qty}</td>
+        <td class="num">${r.totalWeight > 0 ? r.totalWeight.toFixed(1) : '—'}</td>
+      </tr>`).join('');
+    el.innerHTML = `
+      <table class="cutlist">
+        <thead><tr><th>Item</th><th>Length</th><th>Qty</th><th>lb</th></tr></thead>
+        <tbody>${cells}</tbody>
+        <tfoot><tr><td colspan="3">Total weight</td><td class="num">${totalWeight.toFixed(1)}</td></tr></tfoot>
+      </table>`;
+  }
+
+  csvBtn.addEventListener('click', () => {
+    const csv = cutListCSV(buildCutList(model));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'cutlist.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  });
+
+  return { render };
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }

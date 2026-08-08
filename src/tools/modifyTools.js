@@ -10,14 +10,15 @@ import { Units } from '../core/units.js';
 // Select
 
 export class SelectTool extends Tool {
-  get hint() { return 'Select: click an object · Delete removes it · Esc deselects'; }
+  get hint() { return 'Select: click an object · Shift+click adds/removes · Delete removes · Esc deselects'; }
 
   onPointerDown(ev) {
     if (ev.button !== 0) return;
     const app = this.app;
     app.viewport.setPointerFromEvent(ev);
-    const hit = app.viewport.pick(app.model.pickables());
-    app.select(hit ? hit.object.userData.entityId : null);
+    const hit = app.viewport.pick(app.model.pickables(true));
+    if (!hit) { if (!ev.shiftKey) app.select(null); return; }
+    app.select(hit.object.userData.entityId, { additive: ev.shiftKey });
   }
 }
 
@@ -143,46 +144,62 @@ export class PushPullTool extends Tool {
 
 export class MoveTool extends Tool {
   get hint() {
-    return this.entity
+    return this.targets
       ? 'Move the mouse and click to place · Shift = vertical · type a distance + Enter · Esc cancels'
-      : 'Move: click an object to pick it up';
+      : 'Move: click an object (Ctrl+click = copy) · after a move, type x5 + Enter to array';
   }
 
-  activate() { this.reset(); }
+  activate() { this.reset(); this.lastMove = null; }
   deactivate() { this.cancel(); }
 
   reset() {
-    this.entity = null;
+    this.targets = null;      // array of entities being moved
     this.startPoint = null;
     this.applied = new THREE.Vector3();
     this.lastDir = null;
   }
 
   cancel() {
-    if (this.entity) this.app.history.revertToCheckpoint();
+    if (this.targets) this.app.history.revertToCheckpoint();
     this.reset();
     this.app.snapper?.hide();
+  }
+
+  drop() {
+    if (this.applied.lengthSq() > 1e-9) {
+      this.lastMove = { ids: this.targets.map(t => t.id), vector: this.applied.clone() };
+    }
+    this.reset();
+    this.app.ui.setHint('Moved. Type x3 + Enter to repeat as an array. ' + this.hint);
   }
 
   onPointerDown(ev) {
     if (ev.button !== 0) return;
     const app = this.app;
-    if (this.entity) { this.reset(); app.ui.setHint(this.hint); return; } // drop
+    if (this.targets) { this.drop(); return; }
     app.viewport.setPointerFromEvent(ev);
-    const hit = app.viewport.pick(app.model.pickables());
+    const hit = app.viewport.pick(app.model.pickables(true));
     if (!hit) return;
     const e = app.model.entities.get(hit.object.userData.entityId);
     if (!e) return;
     app.history.checkpoint();
-    this.entity = e;
+
+    // whole selection moves if the picked entity is part of it
+    let ids = app.isSelected(e.id) && app.selection.size > 1 ? [...app.selection] : [e.id];
+    if (ev.ctrlKey || ev.metaKey) {
+      ids = ids.map(id => app.model.cloneEntity(id).id); // move the copies
+    }
+    this.targets = ids.map(id => app.model.entities.get(id)).filter(Boolean);
+    app.select(null);
+    for (const id of ids) app.select(id, { additive: true });
+
     this.startPoint = hit.point.clone();
     this.movePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.point.y);
-    app.select(e.id);
     app.ui.setHint(this.hint);
   }
 
   onPointerMove(ev) {
-    if (!this.entity) return;
+    if (!this.targets) return;
     const app = this.app;
     let target;
     if (ev.shiftKey) {
@@ -196,24 +213,39 @@ export class MoveTool extends Tool {
     }
     const delta = target.clone().sub(this.startPoint).sub(this.applied);
     if (delta.lengthSq() > 1e-10) {
-      translateEntity(this.entity, delta);
+      for (const e of this.targets) { translateEntity(e, delta); this.app.model.update(e); }
       this.applied.add(delta);
-      this.app.model.update(this.entity);
     }
     this.lastDir = target.clone().sub(this.startPoint);
     app.ui.setCursorTip(ev, Units.format(this.lastDir.length()));
   }
 
   onVCB(text) {
-    if (!this.entity || !this.lastDir || this.lastDir.lengthSq() < 1e-9) return;
+    // array: "x4" or "*4" after a completed move duplicates along the vector
+    const arr = /^[x*](\d+)$/i.exec(String(text).trim());
+    if (arr && !this.targets && this.lastMove) {
+      const n = parseInt(arr[1]);
+      if (n < 2 || n > 200) return;
+      this.app.history.checkpoint();
+      for (const id of this.lastMove.ids) {
+        for (let k = 1; k < n; k++) {
+          const copy = this.app.model.cloneEntity(id);
+          if (!copy) continue;
+          translateEntity(copy, this.lastMove.vector.clone().multiplyScalar(k));
+          this.app.model.update(copy);
+        }
+      }
+      this.app.ui.setHint(`Array created (${n} total).`);
+      return;
+    }
+    if (!this.targets || !this.lastDir || this.lastDir.lengthSq() < 1e-9) return;
     const len = Units.parse(text);
     if (len == null) return;
     const want = this.lastDir.clone().normalize().multiplyScalar(len);
     const delta = want.sub(this.applied);
-    translateEntity(this.entity, delta);
-    this.app.model.update(this.entity);
-    this.reset();
-    this.app.ui.setHint('Moved. ' + this.hint);
+    for (const e of this.targets) { translateEntity(e, delta); this.app.model.update(e); }
+    this.applied.add(delta);
+    this.drop();
   }
 }
 
@@ -222,7 +254,7 @@ export class MoveTool extends Tool {
 
 export class RotateTool extends Tool {
   get hint() {
-    if (!this.entity) return 'Rotate: click an object';
+    if (!this.targets) return 'Rotate: click an object';
     if (!this.pivot) return 'Click the rotation center';
     if (!this.startRay) return 'Click a reference direction';
     return 'Move to rotate (15° snaps), click to commit · type degrees + Enter · Esc cancels';
@@ -232,11 +264,11 @@ export class RotateTool extends Tool {
   deactivate() { this.cancel(); }
 
   reset() {
-    this.entity = null; this.pivot = null; this.startRay = null; this.applied = 0;
+    this.targets = null; this.pivot = null; this.startRay = null; this.applied = 0;
   }
 
   cancel() {
-    if (this.entity && this.applied) this.app.history.revertToCheckpoint();
+    if (this.targets && this.applied) this.app.history.revertToCheckpoint();
     this.reset();
     this.app.snapper?.hide();
   }
@@ -253,12 +285,13 @@ export class RotateTool extends Tool {
   onPointerDown(ev) {
     if (ev.button !== 0) return;
     const app = this.app;
-    if (!this.entity) {
+    if (!this.targets) {
       app.viewport.setPointerFromEvent(ev);
-      const hit = app.viewport.pick(app.model.pickables());
+      const hit = app.viewport.pick(app.model.pickables(true));
       if (!hit) return;
-      this.entity = app.model.entities.get(hit.object.userData.entityId);
-      app.select(this.entity.id);
+      const e = app.model.entities.get(hit.object.userData.entityId);
+      const ids = app.isSelected(e.id) && app.selection.size > 1 ? [...app.selection] : [e.id];
+      this.targets = ids.map(id => app.model.entities.get(id)).filter(Boolean);
     } else if (!this.pivot) {
       const snap = app.snapper.resolve(ev, app.viewport.groundPlane);
       if (!snap) return;
@@ -275,7 +308,7 @@ export class RotateTool extends Tool {
   }
 
   onPointerMove(ev) {
-    if (!this.entity || !this.pivot || this.startRay == null) return;
+    if (!this.targets || !this.pivot || this.startRay == null) return;
     const a = this.groundAngle(ev);
     if (a == null) return;
     let angle = a - this.startRay;
@@ -283,20 +316,18 @@ export class RotateTool extends Tool {
     angle = Math.round(angle / snap) * snap;
     const delta = angle - this.applied;
     if (Math.abs(delta) > 1e-9) {
-      rotateEntityY(this.entity, this.pivot, delta);
+      for (const e of this.targets) { rotateEntityY(e, this.pivot, delta); this.app.model.update(e); }
       this.applied = angle;
-      this.app.model.update(this.entity);
     }
     this.app.ui.setCursorTip(ev, `${Math.round(angle * 180 / Math.PI)}°`);
   }
 
   onVCB(text) {
-    if (!this.entity || !this.pivot) return;
+    if (!this.targets || !this.pivot) return;
     const deg = parseFloat(text);
     if (isNaN(deg)) return;
     const target = deg * Math.PI / 180;
-    rotateEntityY(this.entity, this.pivot, target - this.applied);
-    this.app.model.update(this.entity);
+    for (const e of this.targets) { rotateEntityY(e, this.pivot, target - this.applied); this.app.model.update(e); }
     this.reset();
     this.app.ui.setHint('Rotated. ' + this.hint);
   }
@@ -369,6 +400,6 @@ export class EraserTool extends Tool {
     const id = hit.object.userData.entityId;
     app.history.checkpoint();
     app.model.remove(id);
-    if (app.selectedId === id) app.select(null);
+    app.deselect(id);
   }
 }

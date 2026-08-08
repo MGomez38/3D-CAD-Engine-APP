@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { materialById } from '../lib/materials.js';
 
 // ---------------------------------------------------------------------------
 // Document model.
@@ -122,6 +123,18 @@ export class Model {
     this.entities.set(e.id, e);
     this.rebuildObject(e);
     this.changed();
+  }
+
+  /** Deep-copy an entity under a new id and add it to the model. */
+  cloneEntity(id) {
+    const src = this.entities.get(id);
+    if (!src) return null;
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.id = newId();
+    this.entities.set(copy.id, copy);
+    this.rebuildObject(copy);
+    this.changed();
+    return copy;
   }
 
   clear() {
@@ -257,13 +270,44 @@ function makeShape(e) {
   const shape = new THREE.Shape();
   if (e.kind === 'circle') {
     shape.absarc(e.center[0], e.center[1], e.radius, 0, Math.PI * 2, false);
+    if (e.innerRadius > 0) {
+      const hole = new THREE.Path();
+      hole.absarc(e.center[0], e.center[1], e.innerRadius, 0, Math.PI * 2, true);
+      shape.holes.push(hole);
+    }
   } else {
     const pts = e.points;
     shape.moveTo(pts[0][0], pts[0][1]);
     for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
     shape.closePath();
+    for (const holePts of e.holes || []) {
+      const hole = new THREE.Path();
+      hole.moveTo(holePts[0][0], holePts[0][1]);
+      for (let i = 1; i < holePts.length; i++) hole.lineTo(holePts[i][0], holePts[i][1]);
+      hole.closePath();
+      shape.holes.push(hole);
+    }
   }
   return shape;
+}
+
+/** Cross-section area of a profile/solid entity, holes subtracted (sq in). */
+export function computeArea(e) {
+  if (e.kind === 'circle') {
+    const inner = e.innerRadius > 0 ? e.innerRadius : 0;
+    return Math.PI * (e.radius * e.radius - inner * inner);
+  }
+  const shoelace = (pts) => {
+    let a = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[(i + 1) % pts.length];
+      a += p[0] * q[1] - q[0] * p[1];
+    }
+    return Math.abs(a) / 2;
+  };
+  let area = shoelace(e.points);
+  for (const hole of e.holes || []) area -= shoelace(hole);
+  return Math.max(area, 0);
 }
 
 /** Matrix mapping shape-local (x=u, y=v, z=normal) into world. */
@@ -303,8 +347,10 @@ function buildSolidObject(e, layer) {
   const depth = Math.abs(e.depth) || 0.01;
   const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 32 });
   if (e.depth < 0) geo.translate(0, 0, e.depth); // extrude downward from the plane
+  const matDef = materialById(e.material);
   const mat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(layer.color), roughness: 0.85, metalness: 0.05,
+    color: new THREE.Color(matDef.color || layer.color),
+    roughness: matDef.roughness, metalness: matDef.metalness,
     side: THREE.DoubleSide, // tolerate either profile winding
   });
   const mesh = new THREE.Mesh(geo, mat);

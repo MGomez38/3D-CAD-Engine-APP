@@ -10,10 +10,14 @@ import { Preview } from './core/preview.js';
 import { Units } from './core/units.js';
 
 import { buildToolbar, TOOLS } from './ui/toolbar.js';
-import { buildLayersPanel, renderEntityInfo } from './ui/panels.js';
+import { buildLayersPanel, renderEntityInfo, buildCutListPanel } from './ui/panels.js';
 import { showSheetDialog } from './ui/sheetDialog.js';
+import { showInsertDialog } from './ui/insertDialog.js';
+import { modelToDXF } from './lib/dxf.js';
 
 import { LineTool, RectTool, CircleTool } from './tools/drawTools.js';
+import { InsertTool } from './tools/insertTool.js';
+import { translateEntity } from './tools/common.js';
 import {
   SelectTool, PushPullTool, MoveTool, RotateTool, DimensionTool, EraserTool,
 } from './tools/modifyTools.js';
@@ -27,7 +31,8 @@ class App {
     this.snapper = new Snapper(this.viewport, this.model);
     this.history = new History(this.model);
     this.preview = new Preview(this.viewport.scene);
-    this.selectedId = null;
+    this.selection = new Set();
+    this.clipboard = null;
 
     this.tools = {
       select: new SelectTool(this),
@@ -35,6 +40,7 @@ class App {
       rect: new RectTool(this),
       circle: new CircleTool(this),
       pushpull: new PushPullTool(this),
+      insert: new InsertTool(this),
       move: new MoveTool(this),
       rotate: new RotateTool(this),
       dimension: new DimensionTool(this),
@@ -57,10 +63,12 @@ class App {
 
     this.toolbarUI = buildToolbar($('#toolbar'), (id) => this.setTool(id));
     this.layersUI = buildLayersPanel($('#layers-list'), $('#btn-add-layer'), this.model, this.history);
+    this.cutListUI = buildCutListPanel($('#cutlist-body'), $('#btn-cutlist-csv'), this.model);
 
     this.model.onChange = () => {
       this.layersUI.render();
-      renderEntityInfo($('#entity-info'), this.model, this.selectedId);
+      this.cutListUI.render();
+      this.renderEntityPanel();
     };
 
     this.bindEvents();
@@ -71,6 +79,18 @@ class App {
   }
 
   setTool(id) {
+    if (id === 'insert') {
+      // the Steel tool is configured through its dialog first
+      showInsertDialog((cfg) => {
+        this.tools.insert.config = cfg;
+        this._activateTool('insert');
+      }, this.tools.insert.config);
+      return;
+    }
+    this._activateTool(id);
+  }
+
+  _activateTool(id) {
     this.activeTool?.deactivate();
     this.preview.clear();
     this.snapper.hide();
@@ -82,18 +102,54 @@ class App {
     this.ui.setCursorTip({}, null);
   }
 
-  select(id) {
-    // clear previous highlight
-    if (this.selectedId) {
-      const prev = this.model.objects.get(this.selectedId);
-      prev?.traverse(c => c.material?.emissive?.setHex(0x000000));
+  // ---- selection ----------------------------------------------------------
+
+  applyHighlight(id, on) {
+    const obj = this.model.objects.get(id);
+    obj?.traverse(c => {
+      if (c.isMesh && c.material?.emissive) c.material.emissive.setHex(on ? 0x2a4d80 : 0x000000);
+    });
+  }
+
+  /** select(null) clears; additive toggles membership. */
+  select(id, { additive = false } = {}) {
+    if (!additive) {
+      for (const old of this.selection) this.applyHighlight(old, false);
+      this.selection.clear();
     }
-    this.selectedId = id;
     if (id) {
-      const obj = this.model.objects.get(id);
-      obj?.traverse(c => { if (c.isMesh && c.material?.emissive) c.material.emissive.setHex(0x2a4d80); });
+      if (additive && this.selection.has(id)) {
+        this.selection.delete(id);
+        this.applyHighlight(id, false);
+      } else {
+        this.selection.add(id);
+        this.applyHighlight(id, true);
+      }
     }
-    renderEntityInfo($('#entity-info'), this.model, id);
+    this.renderEntityPanel();
+  }
+
+  deselect(id) {
+    if (this.selection.delete(id)) this.renderEntityPanel();
+  }
+
+  isSelected(id) { return this.selection.has(id); }
+
+  renderEntityPanel() {
+    // prune stale ids, re-apply highlights (rebuilt objects lose emissive)
+    for (const id of [...this.selection]) {
+      if (!this.model.entities.get(id)) this.selection.delete(id);
+      else this.applyHighlight(id, true);
+    }
+    renderEntityInfo($('#entity-info'), this.model, this.selection, {
+      onEdit: (id, patch) => {
+        const e = this.model.entities.get(id);
+        if (!e) return;
+        this.history.checkpoint();
+        Object.assign(e, patch);
+        this.model.update(e);
+      },
+    });
   }
 
   modelBounds() {
@@ -144,10 +200,36 @@ class App {
         ev.preventDefault(); this.saveProject(); return;
       }
       if (ev.key === 'Delete' || ev.key === 'Backspace') {
-        if (this.selectedId) {
+        if (this.selection.size) {
           this.history.checkpoint();
-          this.model.remove(this.selectedId);
+          for (const id of [...this.selection]) this.model.remove(id);
           this.select(null);
+        }
+        return;
+      }
+      if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'c') {
+        if (this.selection.size) {
+          this.clipboard = [...this.selection]
+            .map(id => this.model.entities.get(id))
+            .filter(Boolean)
+            .map(e => JSON.stringify(e));
+          this.ui.setHint(`Copied ${this.clipboard.length} object(s). Ctrl+V to paste.`);
+        }
+        return;
+      }
+      if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'v') {
+        if (this.clipboard?.length) {
+          this.history.checkpoint();
+          this.select(null);
+          for (const json of this.clipboard) {
+            const copy = JSON.parse(json);
+            delete copy.id;
+            const added = this.model[copy.type === 'dimension' ? 'addDimension' : copy.type === 'profile' ? 'addProfile' : 'addSolid'](copy);
+            translateEntity(added, new THREE.Vector3(12, 0, 12));
+            this.model.update(added);
+            this.select(added.id, { additive: true });
+          }
+          this.ui.setHint('Pasted. Use Move (M) to position.');
         }
         return;
       }
@@ -155,8 +237,8 @@ class App {
         this.viewport.zoomToFit(this.modelBounds());
         return;
       }
-      // number/measurement typing focuses the VCB, SketchUp style
-      if (/^[\d.'"-]$/.test(ev.key)) {
+      // number/measurement/array typing focuses the VCB, SketchUp style
+      if (/^[\d.'"*-]$/.test(ev.key) || (ev.key === 'x' && this.activeToolId === 'move')) {
         const vcb = $('#vcb');
         vcb.focus();
         return;
@@ -222,6 +304,7 @@ class App {
     $('#btn-redo').addEventListener('click', () => { this.history.redo(); this.select(null); });
     $('#btn-sheet').addEventListener('click', () => showSheetDialog(this.model));
     $('#btn-export-stl').addEventListener('click', () => this.exportSTL());
+    $('#btn-export-dxf').addEventListener('click', () => this.exportDXF());
     $('#btn-zoom-fit').addEventListener('click', () => this.viewport.zoomToFit(this.modelBounds()));
     document.querySelectorAll('#topbar .views [data-view]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -260,6 +343,14 @@ class App {
       `${name}.cadshop.json`,
     );
     this.ui.setHint('Project saved.');
+  }
+
+  exportDXF() {
+    const { text, count } = modelToDXF(this.model);
+    if (!count) { alert('Nothing to export — draw some shapes or place some members first.'); return; }
+    const name = (this.model.projectInfo.project || 'parts').replace(/[^\w-]+/g, '_');
+    downloadBlob(new Blob([text], { type: 'application/dxf' }), `${name}.dxf`);
+    this.ui.setHint(`Exported ${count} flat part profile(s) to DXF (inches).`);
   }
 
   exportSTL() {

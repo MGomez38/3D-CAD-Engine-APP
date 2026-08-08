@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { Units } from '../core/units.js';
 
 // Drawing-sheet generator.
 //
@@ -34,7 +35,7 @@ const VIEW_DEFS = {
  * Returns [{ key, title, dataUrl, worldW, worldH }] where worldW/H are the
  * view extents in model inches (for true-to-scale printing).
  */
-export function renderViews(model, viewKeys) {
+export function renderViews(model, viewKeys, { dims = true } = {}) {
   const bounds = new THREE.Box3();
   for (const [id, obj] of model.objects) {
     const e = model.entities.get(id);
@@ -105,9 +106,10 @@ export function renderViews(model, viewKeys) {
           minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
           minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
         }
-    const pad = Math.max((maxX - minX), (maxY - minY)) * 0.05 + 2;
+    const trueW = maxX - minX, trueH = maxY - minY; // actual model extents in this view
+    const pad = Math.max(trueW, trueH) * 0.05 + 2;
     minX -= pad; maxX += pad; minY -= pad; maxY += pad;
-    const worldW = maxX - minX, worldH = maxY - minY;
+    let worldW = maxX - minX, worldH = maxY - minY;
 
     cam.left = minX; cam.right = maxX; cam.top = maxY; cam.bottom = minY;
     cam.updateProjectionMatrix();
@@ -119,15 +121,87 @@ export function renderViews(model, viewKeys) {
     renderer.setSize(w, h, false);
     edgeMat.resolution.set(w, h);
     renderer.render(scene, cam);
-    results.push({ key: keyName, title: def.title, dataUrl: canvas.toDataURL('image/png'), worldW, worldH });
+
+    let dataUrl;
+    if (dims && keyName !== 'iso') {
+      const composite = annotateOverallDims(canvas, w, h, { trueW, trueH, pad, worldW, worldH });
+      dataUrl = composite.canvas.toDataURL('image/png');
+      // margins enlarge the printed footprint — keep the scale factor honest
+      worldW *= composite.w / w;
+      worldH *= composite.h / h;
+    } else {
+      dataUrl = canvas.toDataURL('image/png');
+    }
+    results.push({ key: keyName, title: def.title, dataUrl, worldW, worldH });
   }
 
   renderer.dispose();
   return results;
 }
 
+/**
+ * Draw overall width/height dimensions (architectural tick style) around a
+ * rendered view. Returns { canvas, w, h } of the composited image.
+ */
+function annotateOverallDims(srcCanvas, w, h, { trueW, trueH, pad, worldW, worldH }) {
+  const M = Math.round(Math.max(w, h) * 0.09) + 40; // margin for dim lines
+  const out = document.createElement('canvas');
+  out.width = w + M; out.height = h + M; // dims go left + bottom only
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(srcCanvas, M, 0);
+
+  // content rect inside the source image (padding trimmed)
+  const padX = (pad / worldW) * w, padY = (pad / worldH) * h;
+  const x0 = M + padX, x1 = M + w - padX;
+  const y0 = padY, y1 = h - padY;
+
+  const lw = Math.max(2, Math.round(w / 700));
+  const font = Math.max(22, Math.round(Math.max(w, h) / 42));
+  ctx.strokeStyle = '#111';
+  ctx.fillStyle = '#111';
+  ctx.lineWidth = lw;
+  ctx.font = `${font}px Arial, sans-serif`;
+  ctx.textAlign = 'center';
+
+  const tick = (x, y, horizontal) => {
+    const s = font * 0.45;
+    ctx.beginPath();
+    if (horizontal) { ctx.moveTo(x - s, y + s); ctx.lineTo(x + s, y - s); }
+    else { ctx.moveTo(x - s, y + s); ctx.lineTo(x + s, y - s); }
+    ctx.stroke();
+  };
+
+  // --- width dimension (below) ---
+  const dimY = h + M * 0.45;
+  ctx.beginPath();
+  ctx.moveTo(x0, y1 + 8); ctx.lineTo(x0, dimY + font * 0.6); // extension lines
+  ctx.moveTo(x1, y1 + 8); ctx.lineTo(x1, dimY + font * 0.6);
+  ctx.moveTo(x0, dimY); ctx.lineTo(x1, dimY);                // dim line
+  ctx.stroke();
+  tick(x0, dimY, true); tick(x1, dimY, true);
+  ctx.fillText(Units.format(trueW), (x0 + x1) / 2, dimY - font * 0.35);
+
+  // --- height dimension (left) ---
+  const dimX = M * 0.5;
+  ctx.beginPath();
+  ctx.moveTo(x0 - 8, y0); ctx.lineTo(dimX - font * 0.6, y0);
+  ctx.moveTo(x0 - 8, y1); ctx.lineTo(dimX - font * 0.6, y1);
+  ctx.moveTo(dimX, y0); ctx.lineTo(dimX, y1);
+  ctx.stroke();
+  tick(dimX, y0, false); tick(dimX, y1, false);
+  ctx.save();
+  ctx.translate(dimX - font * 0.35, (y0 + y1) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(Units.format(trueH), 0, 0);
+  ctx.restore();
+
+  return { canvas: out, w: out.width, h: out.height };
+}
+
 /** Open a printable sheet window. `scaleFactor` = paper-inch per model-inch, or null for fit. */
-export function openSheet(views, info, scaleLabel, scaleFactor, paper) {
+export function openSheet(views, info, scaleLabel, scaleFactor, paper, bom = null) {
   const paperSizes = {
     letter: { w: 11, h: 8.5, name: 'ANSI A 11×8.5' },
     tabloid: { w: 17, h: 11, name: 'ANSI B 17×11' },
@@ -169,6 +243,8 @@ export function openSheet(views, info, scaleLabel, scaleFactor, paper) {
   .tb td { border: 1px solid #111; padding: 3pt 6pt; font-size: 8pt; vertical-align: top; }
   .tb .lbl { font-size: 6pt; color: #444; display: block; letter-spacing: 0.08em; }
   .tb .big { font-size: 13pt; font-weight: bold; }
+  .bom td { font-size: 7pt; }
+  .bom .bom-head td { font-size: 6pt; color: #444; letter-spacing: 0.08em; background: #f2f2f2; }
   .toolbar { text-align: center; padding: 8px; }
   .toolbar button { font-size: 14px; padding: 6px 18px; }
   @media print { .toolbar { display: none; } body { background: #fff; } }
@@ -176,6 +252,7 @@ export function openSheet(views, info, scaleLabel, scaleFactor, paper) {
 <div class="toolbar"><button onclick="print()">Print / Save as PDF</button></div>
 <div class="sheet"><div class="frame">
   <div class="views">${viewsHtml}</div>
+  ${bomHtml(bom)}
   <table class="tb"><tr>
     <td style="width:30%"><span class="lbl">PROJECT</span>${esc(info.project) || '—'}</td>
     <td style="width:25%"><span class="lbl">CUSTOMER</span>${esc(info.customer) || '—'}</td>
@@ -195,4 +272,25 @@ export function openSheet(views, info, scaleLabel, scaleFactor, paper) {
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function bomHtml(bom) {
+  if (!bom?.rows?.length) return '';
+  const rows = bom.rows.map((r, i) => `
+    <tr>
+      <td>${i + 1}</td><td>${esc(r.desc)}</td><td>${esc(r.material.name)}</td>
+      <td>${esc(Units.format(r.length))}</td><td>${r.qty}</td>
+      <td>${r.totalWeight > 0 ? r.totalWeight.toFixed(1) : '—'}</td>
+    </tr>`).join('');
+  return `
+  <table class="tb bom" style="border-top:1.5px solid #111">
+    <tr class="bom-head">
+      <td style="width:4%">NO.</td><td style="width:40%">CUT LIST — DESCRIPTION</td>
+      <td style="width:20%">MATERIAL</td><td style="width:14%">LENGTH</td>
+      <td style="width:8%">QTY</td><td style="width:14%">WEIGHT (LB)</td>
+    </tr>
+    ${rows}
+    <tr><td colspan="5" style="text-align:right;font-weight:bold">TOTAL WEIGHT</td>
+        <td style="font-weight:bold">${bom.totalWeight.toFixed(1)}</td></tr>
+  </table>`;
 }

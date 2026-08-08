@@ -1,4 +1,5 @@
 import { SCALES, renderViews, openSheet } from '../drawing/sheet.js';
+import { buildCutList } from '../lib/cutlist.js';
 
 // Modal dialog for configuring and generating a drawing sheet.
 
@@ -33,6 +34,10 @@ export function showSheetDialog(model) {
           </select>
         </label>
       </div>
+      <div class="row checks">
+        <label><input type="checkbox" id="sheet-dims" checked> Overall dimensions</label>
+        <label><input type="checkbox" id="sheet-bom" checked> Include cut list</label>
+      </div>
       <div class="actions">
         <button id="sheet-cancel">Cancel</button>
         <button id="sheet-go" class="accent">Generate</button>
@@ -50,14 +55,17 @@ export function showSheetDialog(model) {
 
   const go = dlg.querySelector('#sheet-go');
   go.onclick = () => {
-    const keys = [...dlg.querySelectorAll('.checks input:checked')].map(c => c.value);
+    const keys = [...dlg.querySelectorAll('.checks input:checked')]
+      .map(c => c.value).filter(v => v !== 'on'); // skip the option checkboxes
     if (!keys.length) return;
-    const views = renderViews(model, keys);
+    const dims = dlg.querySelector('#sheet-dims').checked;
+    const views = renderViews(model, keys, { dims });
     if (!views.length) { alert('Nothing to draw yet — model something first.'); return; }
     const scaleIdx = dlg.querySelector('#sheet-scale').value;
     const scale = scaleIdx === '' ? null : SCALES[parseInt(scaleIdx)];
     const paper = dlg.querySelector('#sheet-paper').value;
-    openSheet(views, model.projectInfo, scale?.label || '', scale?.factor || null, paper);
+    const bom = dlg.querySelector('#sheet-bom').checked ? buildCutList(model) : null;
+    openSheet(views, model.projectInfo, scale?.label || '', scale?.factor || null, paper, bom);
     dlg.close();
   };
 

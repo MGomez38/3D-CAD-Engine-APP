@@ -1,12 +1,34 @@
 # CADShop — 3D CAD for Shop & Architectural Drawings
 
 A browser-based 3D CAD application with a SketchUp-style workflow, built for
-producing **engineered shop drawings** and **architectural drawings** for
-customers. Model in 3D, then generate scaled, title-blocked drawing sheets
-ready to print or save as PDF.
+producing **engineered shop drawings**, **metal fabrication layouts**, and
+**architectural drawings** for customers. Model in 3D with a structural steel
+library, get a live cut list with weights, then generate scaled,
+auto-dimensioned, title-blocked drawing sheets ready to print or save as PDF —
+plus DXF flat patterns for the plasma/laser table.
 
 Built with [Three.js](https://threejs.org/) and [Vite](https://vitejs.dev/) —
 no plugins, no backend, runs entirely in the browser.
+
+## Metal fabrication workflow
+
+1. **Steel tool (`I`)** — pick a stock profile and place members with a click:
+   - Angle (L), Channel (C), Wide Flange (W), Square/Rect Tube (HSS),
+     Pipe & Round Tube, Flat Bar, Round Bar, Plate
+   - Real catalog sizes (L 2x2x1/4, HSS 4x4x1/4, C6x8.2, W8x31, Sch 40 pipe, …)
+     or fully custom dimensions
+   - Run horizontally along either axis or vertically as posts; set length in
+     the dialog or type a new length + Enter while placing
+2. **Cut list / BOM** — updates live as you model: description, cut length,
+   quantity (identical parts group automatically), and weight from real
+   material densities (steel, stainless, aluminum, wood…). Export CSV or
+   include it on the drawing sheet.
+3. **Copy & array** — Ctrl+click with Move copies; after any move type
+   `x4` + Enter to array along the same vector (fence posts, rungs, studs).
+4. **DXF export** — every part's flat cross-section laid out with closed
+   polylines in inches, ready for plasma/laser/waterjet nesting software.
+5. **Drawing sheets** — orthographic views with automatic overall dimensions
+   (architectural tick style), optional cut-list table, and title block.
 
 ## Getting started
 
@@ -50,18 +72,20 @@ in the status bar.
 
 | Key      | Tool / Action        |
 |----------|----------------------|
-| `Space`  | Select               |
+| `Space`  | Select (Shift+click = multi-select) |
 | `L`      | Line (closed shapes) |
 | `R`      | Rectangle            |
 | `C`      | Circle               |
 | `P`      | Push/Pull            |
-| `M`      | Move (Shift = vertical) |
+| `I`      | Steel / stock member library |
+| `M`      | Move (Shift = vertical, Ctrl = copy, then `x4` = array) |
 | `Q`      | Rotate               |
 | `T`      | Dimension            |
 | `E`      | Eraser               |
 | `Delete` | Delete selection     |
 | `Esc`    | Cancel current action|
 | `Ctrl+Z` / `Ctrl+Y` | Undo / Redo |
+| `Ctrl+C` / `Ctrl+V` | Copy / paste selection |
 | `Ctrl+S` | Save project         |
 | `Shift+Z`| Zoom to fit          |
 
@@ -70,14 +94,24 @@ Toolbar buttons switch to standard Iso / Top / Front / Right views.
 
 ## Features
 
+- **Structural steel library** — parametric angle, channel, W-beam, HSS tube,
+  pipe, flat bar, round bar, and plate with standard catalog sizes.
+- **Cut list / BOM** — live grouping with per-part and total weights from real
+  material densities; CSV export; printable on drawing sheets.
+- **Materials** — steel, stainless, aluminum, wood, plywood, concrete; drives
+  both appearance (PBR metals) and weight math.
 - **Snapping & inference** — corner and midpoint snaps (green), axis locking
   (red/green/blue dashed guides), 1" grid snap.
+- **Multi-select, copy, paste, array** — production-speed editing.
 - **Layers** — organize work (e.g., Existing / New / Dimensions), per-layer
   color and visibility.
-- **Entity info** — live size, base area, and volume (cu ft) of the selection.
+- **Entity info** — editable part name & material, live size, section area,
+  and weight of the selection.
 - **Drawing sheets** — orthographic plan/elevation views rendered in
   hidden-line style at true scale (3" = 1'-0" down to 1/8" = 1'-0") on
-  Letter, Tabloid, or Arch D sheets with a professional title block.
+  Letter, Tabloid, or Arch D sheets, with automatic overall dimensions and a
+  professional title block.
+- **DXF export** — flat part profiles for plasma/laser/waterjet cutting.
 - **Project files** — save/open as portable `.cadshop.json` files.
 - **STL export** — hand geometry to CNC/3D-print workflows.
 - **Undo/redo** — full history of every modeling step.

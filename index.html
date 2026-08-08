@@ -21,7 +21,8 @@
           <button id="btn-redo" title="Redo (Ctrl+Y)">Redo</button>
           <span class="sep"></span>
           <button id="btn-sheet" class="accent" title="Generate a drawing sheet with orthographic views">Drawing Sheet…</button>
-          <button id="btn-export-stl" title="Export geometry as STL">Export STL</button>
+          <button id="btn-export-stl" title="Export geometry as STL">STL</button>
+          <button id="btn-export-dxf" title="Export flat part profiles as DXF for plasma/laser cutting">DXF</button>
         </div>
         <div class="spacer"></div>
         <div class="views">
@@ -48,6 +49,11 @@
           <section class="panel" id="panel-entity">
             <h3>Entity</h3>
             <div id="entity-info" class="muted">Nothing selected</div>
+          </section>
+          <section class="panel" id="panel-cutlist">
+            <h3>Cut List</h3>
+            <div id="cutlist-body" class="muted">No parts yet</div>
+            <button id="btn-cutlist-csv" class="small">Export CSV</button>
           </section>
           <section class="panel" id="panel-project">
             <h3>Project Info</h3>
