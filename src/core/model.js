@@ -80,7 +80,21 @@ export class Model {
     this.changed();
   }
 
-  changed() { this.onChange?.(); }
+  changed() {
+    if (this._batching) { this._dirty = true; return; }
+    this.onChange?.();
+  }
+
+  /** Batch many mutations into a single onChange (undo/load/bulk tools). */
+  batch(fn) {
+    if (this._batching) return fn(); // already inside a batch
+    this._batching = true;
+    this._dirty = false;
+    try { fn(); } finally {
+      this._batching = false;
+      if (this._dirty) { this._dirty = false; this.onChange?.(); }
+    }
+  }
 
   // ---- entity CRUD --------------------------------------------------------
 
@@ -138,10 +152,12 @@ export class Model {
   }
 
   clear() {
-    for (const id of [...this.entities.keys()]) this.remove(id);
-    this.layers = [{ id: 'L0', name: 'Layer 0', color: '#8fb8d8', visible: true }];
-    this.activeLayerId = 'L0';
-    this.changed();
+    this.batch(() => {
+      for (const id of [...this.entities.keys()]) this.remove(id);
+      this.layers = [{ id: 'L0', name: 'Layer 0', color: '#8fb8d8', visible: true }];
+      this.activeLayerId = 'L0';
+      this.changed();
+    });
   }
 
   // ---- mesh construction --------------------------------------------------
@@ -222,19 +238,21 @@ export class Model {
   }
 
   load(data) {
-    this.clear();
-    if (Array.isArray(data.layers) && data.layers.length) this.layers = data.layers;
-    this.activeLayerId = data.activeLayerId || this.layers[0].id;
-    this.projectInfo = { ...this.projectInfo, ...(data.projectInfo || {}) };
-    let maxNum = 0;
-    for (const e of data.entities || []) {
-      this.entities.set(e.id, e);
-      this.rebuildObject(e);
-      const m = /^e(\d+)$/.exec(e.id);
-      if (m) maxNum = Math.max(maxNum, parseInt(m[1]));
-    }
-    nextId = maxNum + 1;
-    this.changed();
+    this.batch(() => {
+      this.clear();
+      if (Array.isArray(data.layers) && data.layers.length) this.layers = data.layers;
+      this.activeLayerId = data.activeLayerId || this.layers[0].id;
+      this.projectInfo = { ...this.projectInfo, ...(data.projectInfo || {}) };
+      let maxNum = 0;
+      for (const e of data.entities || []) {
+        this.entities.set(e.id, e);
+        this.rebuildObject(e);
+        const m = /^e(\d+)$/.exec(e.id);
+        if (m) maxNum = Math.max(maxNum, parseInt(m[1]));
+      }
+      nextId = maxNum + 1;
+      this.changed();
+    });
   }
 }
 

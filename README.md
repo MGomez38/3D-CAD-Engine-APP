@@ -44,6 +44,22 @@ X-Ray, and Wireframe.
 **Autosave.** Work is continuously saved to the browser; after a crash or
 accidental tab close you'll be offered a restore on relaunch.
 
+## Railing designer (guardrails & handrails)
+
+Press `B`, pick a system, click a path, press Enter — the **entire railing is
+generated**: posts auto-spaced to your max spacing (no duplicate corner
+posts), top rail flush at the target height, mid-rails or vertical pickets at
+the 4"-sphere-rule spacing, and **bolt-hole baseplates** under every post.
+
+- Presets: Industrial guardrail 42" (2 mid rails) · Picket guardrail 42" ·
+  Pipe handrail 36" · Heavy HSS 2x2 guardrail — every member swappable
+  (HSS, Sch 40 pipe, square bar) and any material.
+- **Code awareness**: warns when a guardrail is under 42", a handrail is
+  outside 34"–38", posts exceed 72" spacing, or picket gaps exceed 4".
+- Every part lands in the cut list with correct specs and weights, and the
+  baseplates (with hole circles) export to DXF for the plasma table.
+- Baseplates are also available standalone in the Steel library (`I`).
+
 ## Metal fabrication workflow
 
 1. **Steel tool (`I`)** — pick a stock profile and place members with a click:
@@ -112,6 +128,8 @@ in the status bar.
 | `C`      | Circle               |
 | `P`      | Push/Pull            |
 | `I`      | Steel / stock member library |
+| `B`      | Railing designer     |
+| `Ctrl+K` | Command palette      |
 | `M`      | Move (Shift = vertical, Ctrl = copy, then `x4` = array) |
 | `Q`      | Rotate               |
 | `T`      | Dimension            |

@@ -17,8 +17,11 @@ import { showInsertDialog } from './ui/insertDialog.js';
 import { showOpeningDialog } from './ui/openingDialog.js';
 import { showSettingsDialog } from './ui/settingsDialog.js';
 import { showHelpDialog, showWelcomeBanner } from './ui/helpDialog.js';
+import { showRailingDialog } from './ui/railingDialog.js';
+import { buildCommandPalette } from './ui/commandPalette.js';
 import { modelToDXF } from './lib/dxf.js';
 import { exampleProject } from './lib/example.js';
+import { RailTool } from './tools/railTool.js';
 
 import { LineTool, RectTool, CircleTool, PolygonTool } from './tools/drawTools.js';
 import { InsertTool } from './tools/insertTool.js';
@@ -41,6 +44,7 @@ const TOOL_COMMANDS = {
   dim: 'dimension', dimension: 'dimension', dli: 'dimension',
   wall: 'wall', w: 'wall',
   opening: 'opening', door: 'opening', window: 'opening',
+  rail: 'rail', railing: 'rail', guard: 'rail', guardrail: 'rail', handrail: 'rail', b: 'rail',
   steel: 'insert', insert: 'insert', i: 'insert',
   select: 'select', sel: 'select',
 };
@@ -87,6 +91,7 @@ class App {
       polygon: new PolygonTool(this),
       wall: new WallTool(this),
       opening: new OpeningTool(this),
+      rail: new RailTool(this),
       move: new MoveTool(this),
       rotate: new RotateTool(this),
       dimension: new DimensionTool(this),
@@ -120,6 +125,22 @@ class App {
     };
 
     this.bindEvents();
+    this.palette = buildCommandPalette([
+      ...TOOLS.map(t => ({ id: t.id, title: `Tool: ${t.label}`, hint: t.keyLabel, run: () => this.setTool(t.id) })),
+      { title: 'Drawing Sheet… (PDF)', run: () => showSheetDialog(this.model) },
+      { title: 'Export DXF (flat parts)', run: () => this.exportDXF() },
+      { title: 'Export STL', run: () => this.exportSTL() },
+      { title: 'Save project', hint: 'Ctrl+S', run: () => this.saveProject() },
+      { title: 'Open project', run: () => $('#file-open').click() },
+      { title: 'New project', run: () => $('#btn-new').click() },
+      { title: 'Undo', hint: 'Ctrl+Z', run: () => { this.history.undo(); this.select(null); } },
+      { title: 'Redo', hint: 'Ctrl+Y', run: () => { this.history.redo(); this.select(null); } },
+      { title: 'Zoom to fit', hint: 'Shift+Z', run: () => this.viewport.zoomToFit(this.modelBounds()) },
+      { title: 'Settings', run: () => showSettingsDialog() },
+      { title: 'Help & shortcuts', hint: 'H', run: () => showHelpDialog(this) },
+      { title: 'Load example project', run: () => this.loadExample() },
+    ]);
+    $('#btn-palette').addEventListener('click', () => this.palette.open());
     this.setTool('line');
     this.restoreAutosave();
     this.model.changed();
@@ -208,6 +229,13 @@ class App {
         this.tools.opening.config = cfg;
         this._activateTool('opening');
       }, this.tools.opening.config);
+      return;
+    }
+    if (id === 'rail') {
+      showRailingDialog((cfg) => {
+        this.tools.rail.config = cfg;
+        this._activateTool('rail');
+      }, this.tools.rail.config);
       return;
     }
     this._activateTool(id);
@@ -384,7 +412,9 @@ class App {
       if (ev.key === 'Delete' || ev.key === 'Backspace') {
         if (this.selection.size) {
           this.history.checkpoint();
-          for (const id of [...this.selection]) this.model.remove(id);
+          this.model.batch(() => {
+            for (const id of [...this.selection]) this.model.remove(id);
+          });
           this.select(null);
         }
         return;
@@ -403,14 +433,16 @@ class App {
         if (this.clipboard?.length) {
           this.history.checkpoint();
           this.select(null);
-          for (const json of this.clipboard) {
-            const copy = JSON.parse(json);
-            delete copy.id;
-            const added = this.model[copy.type === 'dimension' ? 'addDimension' : copy.type === 'profile' ? 'addProfile' : 'addSolid'](copy);
-            translateEntity(added, new THREE.Vector3(12, 0, 12));
-            this.model.update(added);
-            this.select(added.id, { additive: true });
-          }
+          this.model.batch(() => {
+            for (const json of this.clipboard) {
+              const copy = JSON.parse(json);
+              delete copy.id;
+              const added = this.model[copy.type === 'dimension' ? 'addDimension' : copy.type === 'profile' ? 'addProfile' : 'addSolid'](copy);
+              translateEntity(added, new THREE.Vector3(12, 0, 12));
+              this.model.update(added);
+              this.select(added.id, { additive: true });
+            }
+          });
           this.ui.setHint('Pasted. Use Move (M) to position.');
         }
         return;

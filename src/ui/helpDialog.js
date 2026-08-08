@@ -42,7 +42,8 @@ export function showHelpDialog(app) {
             <tr><td><kbd>I</kbd></td><td>Steel library</td><td><kbd>W</kbd></td><td>Wall</td></tr>
             <tr><td><kbd>O</kbd></td><td>Door/Window</td><td><kbd>M</kbd></td><td>Move (Ctrl copies)</td></tr>
             <tr><td><kbd>Q</kbd></td><td>Rotate</td><td><kbd>T</kbd></td><td>Dimension</td></tr>
-            <tr><td><kbd>E</kbd></td><td>Eraser</td><td><kbd>H</kbd></td><td>This help</td></tr>
+            <tr><td><kbd>B</kbd></td><td>Railing designer</td><td><kbd>E</kbd></td><td>Eraser</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Command palette</td><td><kbd>H</kbd></td><td>This help</td></tr>
           </table>
           <h3>Editing</h3>
           <table class="help-keys">

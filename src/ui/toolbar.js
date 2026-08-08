@@ -12,29 +12,39 @@ const ICONS = {
   eraser: '<path d="M4 16 L12 8 L20 16 L14 22 H10 Z"/><path d="M8 12 L16 20"/>',
   insert: '<path d="M5 4 H19 M5 20 H19 M12 4 V20 M8 4 H16 M8 20 H16" transform="translate(0,0)"/><path d="M5 4 H19 M5 20 H19 M12 4 V20"/>',
   polygon: '<path d="M12 3 L20 9 L17 19 L7 19 L4 9 Z"/>',
+  rail: '<path d="M3 8 H21 M3 12 H21 M5 8 V20 M12 8 V20 M19 8 V20 M3 20 H7 M10 20 H14 M17 20 H21"/>',
   wall: '<path d="M3 20 V8 L21 4 V16 Z"/><path d="M3 14 L21 10 M9 6.7 V18.7 M15 5.4 V17.4"/>',
   opening: '<path d="M3 20 H21 M5 20 V6 H19 V20"/><path d="M9 20 V10 H15 V20"/>',
 };
 
 export const TOOLS = [
-  { id: 'select', label: 'Select', key: ' ' , keyLabel: 'Space' },
-  { id: 'line', label: 'Line', key: 'l', keyLabel: 'L' },
-  { id: 'rect', label: 'Rect', key: 'r', keyLabel: 'R' },
-  { id: 'circle', label: 'Circle', key: 'c', keyLabel: 'C' },
-  { id: 'polygon', label: 'Polygon', key: 'g', keyLabel: 'G' },
-  { id: 'pushpull', label: 'Push/Pull', key: 'p', keyLabel: 'P' },
-  { id: 'insert', label: 'Steel', key: 'i', keyLabel: 'I' },
-  { id: 'wall', label: 'Wall', key: 'w', keyLabel: 'W' },
-  { id: 'opening', label: 'Door/Win', key: 'o', keyLabel: 'O' },
-  { id: 'move', label: 'Move', key: 'm', keyLabel: 'M' },
-  { id: 'rotate', label: 'Rotate', key: 'q', keyLabel: 'Q' },
-  { id: 'dimension', label: 'Dim', key: 't', keyLabel: 'T' },
-  { id: 'eraser', label: 'Erase', key: 'e', keyLabel: 'E' },
+  { id: 'select', label: 'Select', key: ' ' , keyLabel: 'Space', group: 'Draw' },
+  { id: 'line', label: 'Line', key: 'l', keyLabel: 'L', group: 'Draw' },
+  { id: 'rect', label: 'Rect', key: 'r', keyLabel: 'R', group: 'Draw' },
+  { id: 'circle', label: 'Circle', key: 'c', keyLabel: 'C', group: 'Draw' },
+  { id: 'polygon', label: 'Polygon', key: 'g', keyLabel: 'G', group: 'Draw' },
+  { id: 'pushpull', label: 'Push/Pull', key: 'p', keyLabel: 'P', group: 'Build' },
+  { id: 'insert', label: 'Steel', key: 'i', keyLabel: 'I', group: 'Build' },
+  { id: 'rail', label: 'Railing', key: 'b', keyLabel: 'B', group: 'Build' },
+  { id: 'wall', label: 'Wall', key: 'w', keyLabel: 'W', group: 'Build' },
+  { id: 'opening', label: 'Door/Win', key: 'o', keyLabel: 'O', group: 'Build' },
+  { id: 'move', label: 'Move', key: 'm', keyLabel: 'M', group: 'Modify' },
+  { id: 'rotate', label: 'Rotate', key: 'q', keyLabel: 'Q', group: 'Modify' },
+  { id: 'eraser', label: 'Erase', key: 'e', keyLabel: 'E', group: 'Modify' },
+  { id: 'dimension', label: 'Dim', key: 't', keyLabel: 'T', group: 'Annotate' },
 ];
 
 export function buildToolbar(container, onSelect) {
   const buttons = new Map();
+  let currentGroup = null;
   for (const t of TOOLS) {
+    if (t.group !== currentGroup) {
+      currentGroup = t.group;
+      const cap = document.createElement('div');
+      cap.className = 'tool-group';
+      cap.textContent = t.group;
+      container.appendChild(cap);
+    }
     const btn = document.createElement('button');
     btn.className = 'tool-btn';
     btn.title = `${t.label} (${t.keyLabel})`;

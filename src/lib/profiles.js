@@ -47,6 +47,8 @@ function rectPoints({ w, h }) {
   return centerPts([[0, 0], [w, 0], [w, h], [0, h]]);
 }
 
+import { BASEPLATE_CATEGORY } from './baseplate.js';
+
 export const PROFILE_CATEGORIES = [
   {
     id: 'angle', name: 'Angle (L)',
@@ -202,6 +204,8 @@ export const PROFILE_CATEGORIES = [
     ],
   },
 ];
+
+PROFILE_CATEGORIES.push(BASEPLATE_CATEGORY);
 
 /** 0.25 -> "1/4", 1.5 -> "1-1/2", 2 -> "2" — spec-style fraction printing. */
 function fr(v) {

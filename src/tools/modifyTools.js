@@ -213,7 +213,9 @@ export class MoveTool extends Tool {
     }
     const delta = target.clone().sub(this.startPoint).sub(this.applied);
     if (delta.lengthSq() > 1e-10) {
-      for (const e of this.targets) { translateEntity(e, delta); this.app.model.update(e); }
+      this.app.model.batch(() => {
+        for (const e of this.targets) { translateEntity(e, delta); this.app.model.update(e); }
+      });
       this.applied.add(delta);
     }
     this.lastDir = target.clone().sub(this.startPoint);
@@ -227,14 +229,16 @@ export class MoveTool extends Tool {
       const n = parseInt(arr[1]);
       if (n < 2 || n > 200) return;
       this.app.history.checkpoint();
-      for (const id of this.lastMove.ids) {
-        for (let k = 1; k < n; k++) {
-          const copy = this.app.model.cloneEntity(id);
-          if (!copy) continue;
-          translateEntity(copy, this.lastMove.vector.clone().multiplyScalar(k));
-          this.app.model.update(copy);
+      this.app.model.batch(() => {
+        for (const id of this.lastMove.ids) {
+          for (let k = 1; k < n; k++) {
+            const copy = this.app.model.cloneEntity(id);
+            if (!copy) continue;
+            translateEntity(copy, this.lastMove.vector.clone().multiplyScalar(k));
+            this.app.model.update(copy);
+          }
         }
-      }
+      });
       this.app.ui.setHint(`Array created (${n} total).`);
       return;
     }
@@ -316,7 +320,9 @@ export class RotateTool extends Tool {
     angle = Math.round(angle / snap) * snap;
     const delta = angle - this.applied;
     if (Math.abs(delta) > 1e-9) {
-      for (const e of this.targets) { rotateEntityY(e, this.pivot, delta); this.app.model.update(e); }
+      this.app.model.batch(() => {
+        for (const e of this.targets) { rotateEntityY(e, this.pivot, delta); this.app.model.update(e); }
+      });
       this.applied = angle;
     }
     this.app.ui.setCursorTip(ev, `${Math.round(angle * 180 / Math.PI)}°`);
