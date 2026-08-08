@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Claude agent worktrees (temporary build infrastructure)
+.claude/worktrees/
