@@ -139,6 +139,42 @@ table.cutlist { width: 100%; border-collapse: collapse; font-size: 11px; margin-
   border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px;
 }
 
+/* ---------- Welcome banner & help ---------- */
+#welcome-banner {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  background: rgba(38, 42, 49, 0.96); border: 1px solid var(--accent);
+  border-radius: 8px; padding: 9px 14px; z-index: 6;
+  display: flex; align-items: center; gap: 10px; font-size: 13px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+}
+#welcome-banner button { border: 1px solid var(--border); padding: 3px 10px; font-size: 12px; }
+#welcome-banner #wb-help { background: var(--accent-dim); border-color: var(--accent); }
+#welcome-banner #wb-close { border: none; color: var(--text-muted); padding: 3px 6px; }
+
+#help-dialog { max-width: 780px; }
+.help-lede { color: var(--text-muted); font-size: 13px; margin-bottom: 14px; }
+.help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }
+.help-cols h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--accent); margin: 14px 0 6px;
+}
+.help-cols h3:first-child { margin-top: 0; }
+.help-steps { margin-left: 18px; font-size: 12.5px; line-height: 1.75; }
+.help-list { margin-left: 16px; font-size: 12.5px; line-height: 1.7; color: var(--text); }
+.help-keys { border-collapse: collapse; font-size: 12px; }
+.help-keys td { padding: 2px 12px 2px 0; }
+.help-note { font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+kbd {
+  background: var(--bg); border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: 4px; padding: 0 5px; font-size: 11px; font-family: inherit;
+}
+code { background: var(--bg); border-radius: 3px; padding: 1px 5px; font-size: 11.5px; }
+
+#autosave-ind {
+  color: #3ddc84; font-size: 11px; opacity: 0; transition: opacity 0.4s;
+}
+#autosave-ind.show { opacity: 1; }
+
 /* ---------- Dialogs ---------- */
 dialog {
   background: var(--bg-panel); color: var(--text);

@@ -102,6 +102,9 @@ export class LineTool extends SketchTool {
   }
 
   placePoint2(p2) {
+    // ignore duplicate clicks (e.g. the second click of a double-click)
+    const last = this.points[this.points.length - 1];
+    if (last && p2.distanceTo(last) < 0.05) return;
     // close the loop?
     if (this.points.length >= 3 && p2.distanceTo(this.points[0]) < 1.5) {
       this.finish();
@@ -109,6 +112,10 @@ export class LineTool extends SketchTool {
     }
     this.points.push(p2);
     this.lastWorld = planeToWorld(this.plane, p2.x, p2.y);
+  }
+
+  onDoubleClick() {
+    if (this.points.length >= 3) this.finish();
   }
 
   onVCB(text) {

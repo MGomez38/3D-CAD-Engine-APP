@@ -135,10 +135,18 @@ Toolbar buttons switch to standard Iso / Top / Front / Right views.
 - **Materials** — steel, stainless, aluminum, wood, plywood, concrete; drives
   both appearance (PBR metals) and weight math.
 - **Snapping & inference** — corner and midpoint snaps (green), automatic axis
-  inference (red/green/blue dashed guides), configurable grid snap, and
-  **hold Shift to hard-lock the axis you're drawing along** — while locked,
-  hovering another corner projects it onto the locked line (draw a wall
-  exactly as long as an existing one, square to the building).
+  inference (red/green/blue dashed guides), configurable grid snap, and a
+  full locking system:
+  - **Hold Shift** locks your current direction — the nearest axis, or the
+    exact free direction you're heading (magenta) for sloped/edge-aligned work
+  - **Arrow keys** toggle sticky axis locks: `→` red (X), `←` blue (Z),
+    `↑` green (vertical) — press again or Esc to release
+  - While locked, hovering another corner projects it onto the locked line
+    (draw a wall exactly as long as an existing one, square to the building)
+- **Learn-by-doing** — first-visit quick-start banner, a Help center (`H`)
+  with a 60-second tutorial and full shortcut reference, and a built-in
+  example project (a complete welding workbench with named parts, materials,
+  dimensions, and a live cut list). Double-click closes Line shapes.
 - **Multi-select, copy, paste, array** — production-speed editing.
 - **Layers** — organize work (e.g., Existing / New / Dimensions), per-layer
   color and visibility.

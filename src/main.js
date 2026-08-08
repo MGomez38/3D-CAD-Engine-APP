@@ -16,7 +16,9 @@ import { showSheetDialog } from './ui/sheetDialog.js';
 import { showInsertDialog } from './ui/insertDialog.js';
 import { showOpeningDialog } from './ui/openingDialog.js';
 import { showSettingsDialog } from './ui/settingsDialog.js';
+import { showHelpDialog, showWelcomeBanner } from './ui/helpDialog.js';
 import { modelToDXF } from './lib/dxf.js';
+import { exampleProject } from './lib/example.js';
 
 import { LineTool, RectTool, CircleTool, PolygonTool } from './tools/drawTools.js';
 import { InsertTool } from './tools/insertTool.js';
@@ -122,7 +124,17 @@ class App {
     this.restoreAutosave();
     this.model.changed();
     this.viewport.startLoop();
-    this.ui.setHint('Welcome! Draw a rectangle (R), then Push/Pull (P) to make it 3D. Middle-drag orbits, right-drag pans, scroll zooms.');
+    showWelcomeBanner(this);
+    this.ui.setHint('Welcome! Draw a rectangle (R), then Push/Pull (P) to make it 3D. Middle-drag orbits, right-drag pans, scroll zooms. Press H for help.');
+  }
+
+  loadExample() {
+    this.history.checkpoint();
+    this.model.load(exampleProject());
+    this.syncProjectInfoInputs();
+    this.select(null);
+    this.viewport.zoomToFit(this.modelBounds());
+    this.ui.setHint('Example loaded — click parts to inspect them, check the Cut List, or try Drawing Sheet…');
   }
 
   // ---- autosave -----------------------------------------------------------
@@ -133,6 +145,10 @@ class App {
     this._autosaveTimer = setTimeout(() => {
       try {
         localStorage.setItem('cadshop-autosave', JSON.stringify(this.model.serialize()));
+        const ind = $('#autosave-ind');
+        ind.classList.add('show');
+        clearTimeout(this._indTimer);
+        this._indTimer = setTimeout(() => ind.classList.remove('show'), 1500);
       } catch { /* storage full */ }
     }, 800);
   }
@@ -218,6 +234,8 @@ class App {
       save: () => this.saveProject(),
       settings: () => showSettingsDialog(),
       config: () => showSettingsDialog(),
+      help: () => showHelpDialog(this),
+      example: () => this.loadExample(),
       units: () => $('#units-select').focus(),
     };
     if (ACTIONS[lower]) { ACTIONS[lower](); return true; }
@@ -317,6 +335,7 @@ class App {
       this.updateCoords(ev);
     });
     canvas.addEventListener('pointerup', (ev) => this.activeTool?.onPointerUp(ev));
+    canvas.addEventListener('dblclick', (ev) => this.activeTool?.onDoubleClick?.(ev));
     canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
     window.addEventListener('keydown', (ev) => {
@@ -332,6 +351,23 @@ class App {
         return;
       }
       if (inField) return;
+
+      // arrow keys toggle sticky axis locks (SketchUp-style)
+      const ARROW_AXES = { ArrowRight: 'axis-x', ArrowLeft: 'axis-z', ArrowUp: 'axis-y' };
+      if (ARROW_AXES[ev.key]) {
+        ev.preventDefault();
+        const lock = this.snapper.toggleStickyAxis(ARROW_AXES[ev.key]);
+        const names = { 'axis-x': 'red (X)', 'axis-z': 'blue (Z)', 'axis-y': 'green (vertical)' };
+        this.ui.setHint(lock
+          ? `Direction locked to the ${names[lock.kind]} axis — press the arrow again or Esc to release.`
+          : 'Axis lock released.');
+        return;
+      }
+      if (ev.key === 'h' || ev.key === '?' || ev.key === 'F1') {
+        ev.preventDefault();
+        showHelpDialog(this);
+        return;
+      }
 
       if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') {
         ev.preventDefault();
@@ -431,6 +467,7 @@ class App {
       localStorage.removeItem('cadshop-autosave');
     });
     $('#btn-settings').addEventListener('click', () => showSettingsDialog());
+    $('#btn-help').addEventListener('click', () => showHelpDialog(this));
     $('#display-style').value = Settings.displayStyle;
     $('#display-style').addEventListener('change', (ev) => {
       Settings.displayStyle = ev.target.value;

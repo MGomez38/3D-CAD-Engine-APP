@@ -46,6 +46,39 @@ export class Snapper {
     this.marker.visible = false;
     this.axisLine.visible = false;
     this.lockedAxis = null;
+    this.stickyAxis = null;
+  }
+
+  /**
+   * Arrow-key axis lock: toggles a persistent lock on a world axis
+   * ('axis-x' | 'axis-y' | 'axis-z'). Returns the new lock or null.
+   */
+  toggleStickyAxis(kind) {
+    this.stickyAxis = this.stickyAxis?.kind === kind
+      ? null
+      : AXES.find(a => a.kind === kind);
+    return this.stickyAxis;
+  }
+
+  /** Shift lock: nearest axis if headed close to one, else the exact free direction. */
+  acquireShiftLock(plane, refPoint) {
+    if (this.lockedAxis) return this.lockedAxis;
+    const raw = this.viewport.intersectPlane(plane);
+    if (!raw) return null;
+    const heading = raw.clone().sub(refPoint);
+    if (heading.lengthSq() < 1e-6) return null;
+    heading.normalize();
+    let best = null, bestDot = 0;
+    for (const ax of AXES) {
+      if (Math.abs(plane.normal.dot(ax.dir)) > 0.99) continue;
+      const dot = Math.abs(heading.dot(ax.dir));
+      if (dot > bestDot) { best = ax; bestDot = dot; }
+    }
+    this.lockedAxis = best && bestDot >= 0.92
+      ? best
+      // free-direction lock (magenta) — e.g. along a sloped edge
+      : { dir: heading.clone(), kind: 'direction', color: 0xd050d0 };
+    return this.lockedAxis;
   }
 
   /** Closest model vertex/midpoint within snap range of the cursor, or null. */
@@ -71,37 +104,27 @@ export class Snapper {
     const vp = this.viewport;
     vp.setPointerFromEvent(ev);
 
-    // 0. Shift = hard axis lock from the reference point
+    // 0. hard locks: arrow-key sticky lock, or Shift held (SketchUp-style)
     if (!ev.shiftKey) this.lockedAxis = null;
-    if (ev.shiftKey && refPoint) {
-      const raw = vp.intersectPlane(plane);
-      if (!this.lockedAxis && raw) {
-        // lock onto whichever axis the cursor is currently heading along
-        const heading = raw.clone().sub(refPoint);
-        if (heading.lengthSq() > 1e-6) {
-          heading.normalize();
-          let best = null, bestDot = 0.3;
-          for (const ax of AXES) {
-            if (Math.abs(plane.normal.dot(ax.dir)) > 0.99) continue; // axis ⟂ plane
-            const dot = Math.abs(heading.dot(ax.dir));
-            if (dot > bestDot) { best = ax; bestDot = dot; }
-          }
-          this.lockedAxis = best;
-        }
+    if (refPoint) {
+      let lock = null;
+      if (this.stickyAxis && Math.abs(plane.normal.dot(this.stickyAxis.dir)) < 0.99) {
+        lock = this.stickyAxis;
+      } else if (ev.shiftKey) {
+        lock = this.acquireShiftLock(plane, refPoint);
       }
-      if (this.lockedAxis) {
-        const ax = this.lockedAxis;
-        // hovering a vertex while locked projects that vertex onto the axis
+      if (lock) {
+        // hovering a vertex while locked projects that vertex onto the line
         // (the classic "lock, then reference another point" workflow)
         const vertex = allowVertices ? this.nearestVertex(ev) : null;
-        const ref3 = vertex || raw;
+        const ref3 = vertex || vp.intersectPlane(plane);
         if (!ref3) { this.marker.visible = false; return null; }
-        const t = ref3.clone().sub(refPoint).dot(ax.dir);
-        let point = refPoint.clone().addScaledVector(ax.dir, t);
-        if (!vertex) point = this.gridSnapAlongAxis(refPoint, ax.dir, point);
-        this.showMarker(point, ax.color);
-        this.showAxisLine(refPoint, point, ax.color);
-        return { point, kind: ax.kind, locked: true };
+        const t = ref3.clone().sub(refPoint).dot(lock.dir);
+        let point = refPoint.clone().addScaledVector(lock.dir, t);
+        if (!vertex) point = this.gridSnapAlongAxis(refPoint, lock.dir, point);
+        this.showMarker(point, lock.color);
+        this.showAxisLine(refPoint, point, lock.color);
+        return { point, kind: lock.kind, locked: true };
       }
     }
 

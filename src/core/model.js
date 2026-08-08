@@ -394,14 +394,15 @@ function buildDimensionObject(e) {
   group.add(seg(a.clone().sub(tick), a.clone().add(tick)));
   group.add(seg(b.clone().sub(tick), b.clone().add(tick)));
 
-  // label sprite
-  const label = makeTextSprite(e.label || '', DIM_COLOR);
+  // label sprite, sized relative to the dimension so it reads at any scale
+  const spriteScale = Math.max(0.08, Math.min(0.35, len * 0.004));
+  const label = makeTextSprite(e.label || '', DIM_COLOR, spriteScale);
   label.position.copy(a.clone().add(b).multiplyScalar(0.5)).add(off.clone().normalize().multiplyScalar(3));
   group.add(label);
   return group;
 }
 
-export function makeTextSprite(text, color = 0xffffff) {
+export function makeTextSprite(text, color = 0xffffff, scale = 0.35) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   const font = '28px "Segoe UI", sans-serif';
@@ -418,8 +419,7 @@ export function makeTextSprite(text, color = 0xffffff) {
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
-  const scale = 0.35; // world inches per canvas px — readable at room scale
-  sprite.scale.set(w * scale, h * scale, 1);
+  sprite.scale.set(w * scale, h * scale, 1); // scale = world inches per canvas px
   sprite.renderOrder = 10;
   return sprite;
 }
