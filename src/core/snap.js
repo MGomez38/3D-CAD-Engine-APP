@@ -8,6 +8,12 @@ import { Settings } from './settings.js';
 
 const SNAP_PX = 9; // Settings.gridSnap controls the sketch-plane snap increment
 
+const AXES = [
+  { dir: new THREE.Vector3(1, 0, 0), kind: 'axis-x', color: 0xd05050 },
+  { dir: new THREE.Vector3(0, 1, 0), kind: 'axis-y', color: 0x50b060 },
+  { dir: new THREE.Vector3(0, 0, 1), kind: 'axis-z', color: 0x5070d0 },
+];
+
 export class Snapper {
   constructor(viewport, model) {
     this.viewport = viewport;
@@ -39,29 +45,69 @@ export class Snapper {
   hide() {
     this.marker.visible = false;
     this.axisLine.visible = false;
+    this.lockedAxis = null;
+  }
+
+  /** Closest model vertex/midpoint within snap range of the cursor, or null. */
+  nearestVertex(ev) {
+    const vp = this.viewport;
+    const rect = vp.canvas.getBoundingClientRect();
+    const cursor = new THREE.Vector2(ev.clientX - rect.left, ev.clientY - rect.top);
+    let best = null, bestDist = SNAP_PX;
+    for (const p of this.model.snapPoints()) {
+      const d = vp.worldToScreen(p).distanceTo(cursor);
+      if (d < bestDist) { best = p; bestDist = d; }
+    }
+    return best;
   }
 
   /**
    * Resolve the current pointer to a snapped point on `plane` (THREE.Plane in world).
-   * `refPoint` (Vector3|null) enables axis inference from that point.
-   * Returns { point: Vector3, kind: 'vertex'|'axis-x'|'axis-y'|'axis-z'|'grid'|null } or null.
+   * `refPoint` (Vector3|null) enables axis inference from that point, and holding
+   * Shift locks the direction to the axis you're heading along (SketchUp-style).
+   * Returns { point, kind: 'vertex'|'axis-x'|'axis-y'|'axis-z'|'grid', locked? } or null.
    */
   resolve(ev, plane, refPoint = null, { allowVertices = true } = {}) {
     const vp = this.viewport;
     vp.setPointerFromEvent(ev);
 
+    // 0. Shift = hard axis lock from the reference point
+    if (!ev.shiftKey) this.lockedAxis = null;
+    if (ev.shiftKey && refPoint) {
+      const raw = vp.intersectPlane(plane);
+      if (!this.lockedAxis && raw) {
+        // lock onto whichever axis the cursor is currently heading along
+        const heading = raw.clone().sub(refPoint);
+        if (heading.lengthSq() > 1e-6) {
+          heading.normalize();
+          let best = null, bestDot = 0.3;
+          for (const ax of AXES) {
+            if (Math.abs(plane.normal.dot(ax.dir)) > 0.99) continue; // axis ⟂ plane
+            const dot = Math.abs(heading.dot(ax.dir));
+            if (dot > bestDot) { best = ax; bestDot = dot; }
+          }
+          this.lockedAxis = best;
+        }
+      }
+      if (this.lockedAxis) {
+        const ax = this.lockedAxis;
+        // hovering a vertex while locked projects that vertex onto the axis
+        // (the classic "lock, then reference another point" workflow)
+        const vertex = allowVertices ? this.nearestVertex(ev) : null;
+        const ref3 = vertex || raw;
+        if (!ref3) { this.marker.visible = false; return null; }
+        const t = ref3.clone().sub(refPoint).dot(ax.dir);
+        let point = refPoint.clone().addScaledVector(ax.dir, t);
+        if (!vertex) point = this.gridSnapAlongAxis(refPoint, ax.dir, point);
+        this.showMarker(point, ax.color);
+        this.showAxisLine(refPoint, point, ax.color);
+        return { point, kind: ax.kind, locked: true };
+      }
+    }
+
     // 1. vertex / midpoint snap (screen-space)
     if (allowVertices) {
-      const cursor = new THREE.Vector2(
-        ev.clientX - vp.canvas.getBoundingClientRect().left,
-        ev.clientY - vp.canvas.getBoundingClientRect().top,
-      );
-      let best = null, bestDist = SNAP_PX;
-      for (const p of this.model.snapPoints()) {
-        const s = vp.worldToScreen(p);
-        const d = s.distanceTo(cursor);
-        if (d < bestDist) { best = p; bestDist = d; }
-      }
+      const best = this.nearestVertex(ev);
       if (best) {
         this.showMarker(best, 0x3ddc84);
         this.axisLine.visible = false;
@@ -73,15 +119,10 @@ export class Snapper {
     const raw = vp.intersectPlane(plane);
     if (!raw) { this.hide(); return null; }
 
-    // 3. axis inference from reference point
+    // 3. soft axis inference from the reference point
     if (refPoint) {
-      const axes = [
-        { dir: new THREE.Vector3(1, 0, 0), kind: 'axis-x', color: 0xd05050 },
-        { dir: new THREE.Vector3(0, 1, 0), kind: 'axis-y', color: 0x50b060 },
-        { dir: new THREE.Vector3(0, 0, 1), kind: 'axis-z', color: 0x5070d0 },
-      ];
       const cursorScreen = vp.worldToScreen(raw);
-      for (const ax of axes) {
+      for (const ax of AXES) {
         if (Math.abs(plane.normal.dot(ax.dir)) > 0.99) continue; // axis ⟂ plane
         const projected = refPoint.clone().addScaledVector(
           ax.dir, raw.clone().sub(refPoint).dot(ax.dir));

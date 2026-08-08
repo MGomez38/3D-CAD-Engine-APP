@@ -134,8 +134,11 @@ Toolbar buttons switch to standard Iso / Top / Front / Right views.
   material densities; CSV export; printable on drawing sheets.
 - **Materials** — steel, stainless, aluminum, wood, plywood, concrete; drives
   both appearance (PBR metals) and weight math.
-- **Snapping & inference** — corner and midpoint snaps (green), axis locking
-  (red/green/blue dashed guides), 1" grid snap.
+- **Snapping & inference** — corner and midpoint snaps (green), automatic axis
+  inference (red/green/blue dashed guides), configurable grid snap, and
+  **hold Shift to hard-lock the axis you're drawing along** — while locked,
+  hovering another corner projects it onto the locked line (draw a wall
+  exactly as long as an existing one, square to the building).
 - **Multi-select, copy, paste, array** — production-speed editing.
 - **Layers** — organize work (e.g., Existing / New / Dimensions), per-layer
   color and visibility.

@@ -74,7 +74,7 @@ export class LineTool extends SketchTool {
 
   get hint() {
     return this.points.length
-      ? 'Click next point — close on the first point · length, "x,y", "@dx,dy", or "@d<angle" + Enter · Esc cancels'
+      ? 'Click next point — close on the first point · hold Shift to lock the axis · length or "@dx,dy" + Enter · Esc cancels'
       : 'Line: click to start a shape on the ground or on a face (or type "x,y" + Enter)';
   }
 

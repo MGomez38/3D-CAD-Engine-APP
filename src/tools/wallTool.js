@@ -14,7 +14,7 @@ export class WallTool extends Tool {
 
   get hint() {
     return this.p1
-      ? `Wall to… click the end point · length or "@dx,dy" + Enter (H ${Units.format(Settings.wallHeight)}, T ${Units.format(Settings.wallThickness)})`
+      ? `Wall to… click the end point · Shift locks the axis · length or "@dx,dy" + Enter (H ${Units.format(Settings.wallHeight)}, T ${Units.format(Settings.wallThickness)})`
       : `Wall: click the start point (H ${Units.format(Settings.wallHeight)}, T ${Units.format(Settings.wallThickness)} — change in Settings)`;
   }
 
