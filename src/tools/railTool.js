@@ -93,8 +93,9 @@ export class RailTool extends Tool {
       return;
     }
     this.app.history.checkpoint();
+    const groupId = `grp${Date.now().toString(36)}${Math.floor(Math.random() * 1e5)}`;
     this.app.model.batch(() => {
-      for (const e of entities) this.app.model.addSolid(e);
+      for (const e of entities) this.app.model.addSolid({ ...e, groupId });
     });
     const note = warnings.length ? `  ⚠ ${warnings.join(' ')}` : '';
     this.app.ui.setHint(`Railing built — ${entities.length} parts added to the cut list.${note}`);

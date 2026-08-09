@@ -52,6 +52,7 @@ export class Model {
       { id: 'L0', name: 'Layer 0', color: '#8fb8d8', visible: true },
     ];
     this.activeLayerId = 'L0';
+    this.scenes = []; // saved camera views: {id,name,position,target}
     this.projectInfo = { project: '', customer: '', author: '', number: '' };
     this.group = new THREE.Group();
     this.group.name = 'model';
@@ -126,6 +127,14 @@ export class Model {
     return e;
   }
 
+  addLabel(lbl) {
+    const e = { id: newId(), type: 'label', layerId: this.activeLayerId, ...lbl };
+    this.entities.set(e.id, e);
+    this.rebuildObject(e);
+    this.changed();
+    return e;
+  }
+
   remove(id) {
     const obj = this.objects.get(id);
     if (obj) { this.group.remove(obj); disposeObject(obj); this.objects.delete(id); }
@@ -169,6 +178,7 @@ export class Model {
     if (e.type === 'profile') obj = buildProfileObject(e, this.layer(e.layerId));
     else if (e.type === 'solid') obj = buildSolidObject(e, this.layer(e.layerId));
     else if (e.type === 'dimension') obj = buildDimensionObject(e, this.layer(e.layerId));
+    else if (e.type === 'label') obj = buildLabelObject(e);
     if (!obj) return;
     obj.userData.entityId = e.id;
     obj.traverse(c => (c.userData.entityId = e.id));
@@ -189,8 +199,8 @@ export class Model {
       if (!e || !obj.visible) continue;
       if (e.type === 'solid' || e.type === 'profile') {
         obj.traverse(c => { if (c.isMesh) list.push(c); });
-      } else if (includeDimensions && e.type === 'dimension') {
-        obj.traverse(c => { if (c.isLine) list.push(c); });
+      } else if (includeDimensions && (e.type === 'dimension' || e.type === 'label')) {
+        obj.traverse(c => { if (c.isLine || c.isSprite) list.push(c); });
       }
     }
     return list;
@@ -220,6 +230,8 @@ export class Model {
         }
       } else if (e.type === 'dimension') {
         pts.push(new THREE.Vector3(...e.p1), new THREE.Vector3(...e.p2));
+      } else if (e.type === 'label') {
+        pts.push(new THREE.Vector3(...e.position));
       }
     }
     return pts;
@@ -233,6 +245,7 @@ export class Model {
       layers: this.layers,
       activeLayerId: this.activeLayerId,
       projectInfo: this.projectInfo,
+      scenes: this.scenes,
       entities: [...this.entities.values()],
     };
   }
@@ -243,6 +256,7 @@ export class Model {
       if (Array.isArray(data.layers) && data.layers.length) this.layers = data.layers;
       this.activeLayerId = data.activeLayerId || this.layers[0].id;
       this.projectInfo = { ...this.projectInfo, ...(data.projectInfo || {}) };
+      this.scenes = Array.isArray(data.scenes) ? data.scenes : [];
       let maxNum = 0;
       for (const e of data.entities || []) {
         this.entities.set(e.id, e);
@@ -417,6 +431,23 @@ function buildDimensionObject(e) {
   const label = makeTextSprite(e.label || '', DIM_COLOR, spriteScale);
   label.position.copy(a.clone().add(b).multiplyScalar(0.5)).add(off.clone().normalize().multiplyScalar(3));
   group.add(label);
+  return group;
+}
+
+function buildLabelObject(e) {
+  const group = new THREE.Group();
+  const p = new THREE.Vector3(...e.position);
+  const anchor = p.clone().add(new THREE.Vector3(0, 10, 0));
+  const sprite = makeTextSprite(e.text || 'Note', 0xe8eaed, 0.22);
+  sprite.position.copy(anchor);
+  group.add(sprite);
+  const mat = new THREE.LineBasicMaterial({ color: 0x9aa2ad });
+  group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([p, anchor]), mat));
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.6, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0x9aa2ad }));
+  dot.position.copy(p);
+  group.add(dot);
   return group;
 }
 

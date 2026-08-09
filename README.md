@@ -165,6 +165,17 @@ Toolbar buttons switch to standard Iso / Top / Front / Right views.
   with a 60-second tutorial and full shortcut reference, and a built-in
   example project (a complete welding workbench with named parts, materials,
   dimensions, and a live cut list). Double-click closes Line shapes.
+- **Groups** — Ctrl+G binds objects into one unit that selects, moves,
+  rotates, copies, arrays, and erases together (railings auto-group);
+  Ctrl+Shift+G ungroups. Copies of groups become independent groups.
+- **Box selection** — drag on empty space to select everything in the
+  rectangle; Shift adds; Ctrl+A selects all.
+- **Saved Views** — snapshot camera angles (like SketchUp scenes) and restore
+  them with one click; saved in the project file.
+- **Section cuts** (`X`) — slice the model live at any height to see inside;
+  type an exact height, or "off" to clear. Drawings are never affected.
+- **Note callouts** (`N`) — attach text notes (weld symbols, instructions) to
+  points on the model with leader lines.
 - **Multi-select, copy, paste, array** — production-speed editing.
 - **Layers** — organize work (e.g., Existing / New / Dimensions), per-layer
   color and visibility.

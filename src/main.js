@@ -11,7 +11,7 @@ import { Units } from './core/units.js';
 
 import { Settings, loadSettings, saveSettings } from './core/settings.js';
 import { buildToolbar, TOOLS } from './ui/toolbar.js';
-import { buildLayersPanel, renderEntityInfo, buildCutListPanel } from './ui/panels.js';
+import { buildLayersPanel, renderEntityInfo, buildCutListPanel, buildScenesPanel } from './ui/panels.js';
 import { showSheetDialog } from './ui/sheetDialog.js';
 import { showInsertDialog } from './ui/insertDialog.js';
 import { showOpeningDialog } from './ui/openingDialog.js';
@@ -26,6 +26,7 @@ import { RailTool } from './tools/railTool.js';
 import { LineTool, RectTool, CircleTool, PolygonTool } from './tools/drawTools.js';
 import { InsertTool } from './tools/insertTool.js';
 import { WallTool, OpeningTool } from './tools/wallTool.js';
+import { SectionTool, LabelTool } from './tools/annotateTools.js';
 import { translateEntity } from './tools/common.js';
 import {
   SelectTool, PushPullTool, MoveTool, RotateTool, DimensionTool, EraserTool,
@@ -45,6 +46,8 @@ const TOOL_COMMANDS = {
   wall: 'wall', w: 'wall',
   opening: 'opening', door: 'opening', window: 'opening',
   rail: 'rail', railing: 'rail', guard: 'rail', guardrail: 'rail', handrail: 'rail', b: 'rail',
+  section: 'section', cut: 'section', x: 'section',
+  label: 'label', note: 'label', text: 'label', n: 'label',
   steel: 'insert', insert: 'insert', i: 'insert',
   select: 'select', sel: 'select',
 };
@@ -95,8 +98,11 @@ class App {
       move: new MoveTool(this),
       rotate: new RotateTool(this),
       dimension: new DimensionTool(this),
+      label: new LabelTool(this),
+      section: new SectionTool(this),
       eraser: new EraserTool(this),
     };
+    this.sectionY = null;
     this.activeTool = null;
 
     this.ui = {
@@ -115,10 +121,12 @@ class App {
     this.toolbarUI = buildToolbar($('#toolbar'), (id) => this.setTool(id));
     this.layersUI = buildLayersPanel($('#layers-list'), $('#btn-add-layer'), this.model, this.history);
     this.cutListUI = buildCutListPanel($('#cutlist-body'), $('#btn-cutlist-csv'), this.model);
+    this.scenesUI = buildScenesPanel($('#scenes-list'), $('#btn-add-scene'), this.model, this.viewport);
 
     this.model.onChange = () => {
       this.layersUI.render();
       this.cutListUI.render();
+      this.scenesUI.render();
       this.renderEntityPanel();
       this.applyDisplayStyle();
       this.scheduleAutosave();
@@ -194,11 +202,17 @@ class App {
 
   applyDisplayStyle() {
     const style = Settings.displayStyle;
+    const clipPlanes = this.sectionY != null
+      ? [new THREE.Plane(new THREE.Vector3(0, -1, 0), this.sectionY)]
+      : [];
     for (const [id, obj] of this.model.objects) {
       const e = this.model.entities.get(id);
-      if (!e || e.type === 'dimension') continue;
+      if (!e) continue;
+      const isAnnotation = e.type === 'dimension' || e.type === 'label';
       const isProfile = e.type === 'profile';
       obj.traverse(c => {
+        if (c.material) c.material.clippingPlanes = isAnnotation ? [] : clipPlanes;
+        if (isAnnotation) return;
         if (c.isMesh && c.material) {
           const m = c.material;
           if (style === 'xray') {
@@ -325,6 +339,48 @@ class App {
 
   isSelected(id) { return this.selection.has(id); }
 
+  /** All member ids of the entity's group (or just [id] if ungrouped). */
+  groupIdsOf(id) {
+    const e = this.model.entities.get(id);
+    if (!e?.groupId) return [id];
+    return [...this.model.entities.values()]
+      .filter(x => x.groupId === e.groupId)
+      .map(x => x.id);
+  }
+
+  groupSelection() {
+    if (this.selection.size < 2) {
+      this.ui.setHint('Select two or more objects (Shift+click or drag a box), then Ctrl+G groups them.');
+      return;
+    }
+    this.history.checkpoint();
+    const gid = `grp${Date.now().toString(36)}${Math.floor(Math.random() * 1e5)}`;
+    for (const id of this.selection) {
+      const e = this.model.entities.get(id);
+      if (e) e.groupId = gid;
+    }
+    this.model.changed();
+    this.ui.setHint(`Grouped ${this.selection.size} objects — they now select and move as one.`);
+  }
+
+  ungroupSelection() {
+    if (!this.selection.size) return;
+    this.history.checkpoint();
+    for (const id of this.selection) {
+      const e = this.model.entities.get(id);
+      if (e) delete e.groupId;
+    }
+    this.model.changed();
+    this.ui.setHint('Ungrouped.');
+  }
+
+  /** Live horizontal section cut at height y (null clears it). */
+  setSection(y) {
+    this.sectionY = y;
+    this.viewport.setSectionIndicator(y, this.modelBounds());
+    this.applyDisplayStyle();
+  }
+
   renderEntityPanel() {
     // prune stale ids, re-apply highlights (rebuilt objects lose emissive)
     for (const id of [...this.selection]) {
@@ -419,6 +475,20 @@ class App {
         }
         return;
       }
+      if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'g') {
+        ev.preventDefault();
+        ev.shiftKey ? this.ungroupSelection() : this.groupSelection();
+        return;
+      }
+      if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'a') {
+        ev.preventDefault();
+        this.select(null);
+        for (const [id, obj] of this.model.objects) {
+          if (obj.visible) this.select(id, { additive: true });
+        }
+        this.ui.setHint(`${this.selection.size} objects selected.`);
+        return;
+      }
       if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'c') {
         if (this.selection.size) {
           this.clipboard = [...this.selection]
@@ -434,10 +504,20 @@ class App {
           this.history.checkpoint();
           this.select(null);
           this.model.batch(() => {
+            const gidMap = new Map();
             for (const json of this.clipboard) {
               const copy = JSON.parse(json);
               delete copy.id;
-              const added = this.model[copy.type === 'dimension' ? 'addDimension' : copy.type === 'profile' ? 'addProfile' : 'addSolid'](copy);
+              if (copy.groupId) {
+                if (!gidMap.has(copy.groupId)) {
+                  gidMap.set(copy.groupId, `grp${Date.now().toString(36)}${Math.floor(Math.random() * 1e5)}`);
+                }
+                copy.groupId = gidMap.get(copy.groupId);
+              }
+              const adder = copy.type === 'dimension' ? 'addDimension'
+                : copy.type === 'label' ? 'addLabel'
+                : copy.type === 'profile' ? 'addProfile' : 'addSolid';
+              const added = this.model[adder](copy);
               translateEntity(added, new THREE.Vector3(12, 0, 12));
               this.model.update(added);
               this.select(added.id, { additive: true });

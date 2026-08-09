@@ -13,6 +13,8 @@ const ICONS = {
   insert: '<path d="M5 4 H19 M5 20 H19 M12 4 V20 M8 4 H16 M8 20 H16" transform="translate(0,0)"/><path d="M5 4 H19 M5 20 H19 M12 4 V20"/>',
   polygon: '<path d="M12 3 L20 9 L17 19 L7 19 L4 9 Z"/>',
   rail: '<path d="M3 8 H21 M3 12 H21 M5 8 V20 M12 8 V20 M19 8 V20 M3 20 H7 M10 20 H14 M17 20 H21"/>',
+  label: '<path d="M4 5 H20 V15 H12 L8 19 V15 H4 Z"/><path d="M8 9 H16 M8 12 H13"/>',
+  section: '<path d="M3 12 H21" stroke-dasharray="3 2"/><path d="M6 12 V19 H18 V12 M9 5 H15 V12"/>',
   wall: '<path d="M3 20 V8 L21 4 V16 Z"/><path d="M3 14 L21 10 M9 6.7 V18.7 M15 5.4 V17.4"/>',
   opening: '<path d="M3 20 H21 M5 20 V6 H19 V20"/><path d="M9 20 V10 H15 V20"/>',
 };
@@ -32,6 +34,8 @@ export const TOOLS = [
   { id: 'rotate', label: 'Rotate', key: 'q', keyLabel: 'Q', group: 'Modify' },
   { id: 'eraser', label: 'Erase', key: 'e', keyLabel: 'E', group: 'Modify' },
   { id: 'dimension', label: 'Dim', key: 't', keyLabel: 'T', group: 'Annotate' },
+  { id: 'label', label: 'Note', key: 'n', keyLabel: 'N', group: 'Annotate' },
+  { id: 'section', label: 'Section', key: 'x', keyLabel: 'X', group: 'Annotate' },
 ];
 
 export function buildToolbar(container, onSelect) {

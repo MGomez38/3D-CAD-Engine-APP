@@ -13,6 +13,7 @@ export class Viewport {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.localClippingEnabled = true; // section cuts
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x272b31);
@@ -94,6 +95,40 @@ export class Viewport {
     axis(new THREE.Vector3(1, 0, 0), 0xd05050);
     axis(new THREE.Vector3(0, 1, 0), 0x50b060);
     axis(new THREE.Vector3(0, 0, 1), 0x5070d0);
+  }
+
+  /** Translucent indicator plane showing where the section cut sits. */
+  setSectionIndicator(y, bounds) {
+    if (this.sectionIndicator) {
+      this.scene.remove(this.sectionIndicator);
+      this.sectionIndicator.traverse(c => { c.geometry?.dispose?.(); c.material?.dispose?.(); });
+      this.sectionIndicator = null;
+    }
+    if (y == null) return;
+    const size = bounds && !bounds.isEmpty()
+      ? Math.max(bounds.getSize(new THREE.Vector3()).length(), 120)
+      : 300;
+    const cx = bounds && !bounds.isEmpty() ? bounds.getCenter(new THREE.Vector3()).x : 0;
+    const cz = bounds && !bounds.isEmpty() ? bounds.getCenter(new THREE.Vector3()).z : 0;
+    const group = new THREE.Group();
+    const geo = new THREE.PlaneGeometry(size, size);
+    geo.rotateX(-Math.PI / 2);
+    const fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color: 0x4c8dff, transparent: true, opacity: 0.06,
+      side: THREE.DoubleSide, depthWrite: false,
+    }));
+    group.add(fill);
+    const h = size / 2;
+    const outline = new THREE.LineLoop(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-h, 0, -h), new THREE.Vector3(h, 0, -h),
+        new THREE.Vector3(h, 0, h), new THREE.Vector3(-h, 0, h),
+      ]),
+      new THREE.LineBasicMaterial({ color: 0x4c8dff }));
+    group.add(outline);
+    group.position.set(cx, y, cz);
+    this.scene.add(group);
+    this.sectionIndicator = group;
   }
 
   resize() {

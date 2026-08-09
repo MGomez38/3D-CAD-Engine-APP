@@ -146,6 +146,13 @@ table.cutlist { width: 100%; border-collapse: collapse; font-size: 11px; margin-
   border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px;
 }
 
+/* ---------- Box selection ---------- */
+.select-box {
+  position: absolute; z-index: 5; pointer-events: none;
+  border: 1px solid var(--accent);
+  background: rgba(76, 141, 255, 0.12);
+}
+
 /* ---------- Command palette ---------- */
 #palette-overlay {
   position: fixed; inset: 0; z-index: 40; display: none;

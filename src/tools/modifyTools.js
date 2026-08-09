@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
   Tool, dragDistanceAlongAxis, faceWorldNormal,
-  translateEntity, rotateEntityY,
+  translateEntity, rotateEntityY, cloneEntitiesRegrouped,
 } from './common.js';
 import { planeNormal, solidMatrix } from '../core/model.js';
 import { Units } from '../core/units.js';
@@ -10,15 +10,94 @@ import { Units } from '../core/units.js';
 // Select
 
 export class SelectTool extends Tool {
-  get hint() { return 'Select: click an object · Shift+click adds/removes · Delete removes · Esc deselects'; }
+  get hint() { return 'Select: click or drag a box · Shift adds · Ctrl+G groups · Delete removes · Esc deselects'; }
+
+  deactivate() { this.endBox(); }
+  cancel() { this.endBox(); }
 
   onPointerDown(ev) {
     if (ev.button !== 0) return;
     const app = this.app;
     app.viewport.setPointerFromEvent(ev);
     const hit = app.viewport.pick(app.model.pickables(true));
-    if (!hit) { if (!ev.shiftKey) app.select(null); return; }
-    app.select(hit.object.userData.entityId, { additive: ev.shiftKey });
+    if (hit) {
+      const ids = app.groupIdsOf(hit.object.userData.entityId);
+      if (ev.shiftKey) {
+        // toggle the whole group in/out of the selection
+        const anySelected = ids.some(id => app.isSelected(id));
+        for (const id of ids) {
+          if (anySelected === app.isSelected(id)) app.select(id, { additive: true });
+        }
+      } else {
+        app.select(null);
+        for (const id of ids) app.select(id, { additive: true });
+      }
+      return;
+    }
+    // empty space: start a selection box
+    this.boxStart = { x: ev.clientX, y: ev.clientY, shift: ev.shiftKey };
+    this.boxEl = document.createElement('div');
+    this.boxEl.className = 'select-box';
+    document.getElementById('viewport-wrap').appendChild(this.boxEl);
+  }
+
+  onPointerMove(ev) {
+    if (!this.boxStart || !this.boxEl) return;
+    const wrap = document.getElementById('viewport-wrap').getBoundingClientRect();
+    const x1 = Math.min(this.boxStart.x, ev.clientX) - wrap.left;
+    const y1 = Math.min(this.boxStart.y, ev.clientY) - wrap.top;
+    Object.assign(this.boxEl.style, {
+      left: `${x1}px`, top: `${y1}px`,
+      width: `${Math.abs(ev.clientX - this.boxStart.x)}px`,
+      height: `${Math.abs(ev.clientY - this.boxStart.y)}px`,
+    });
+  }
+
+  onPointerUp(ev) {
+    if (!this.boxStart) return;
+    const start = this.boxStart;
+    this.endBox();
+    const w = Math.abs(ev.clientX - start.x), h = Math.abs(ev.clientY - start.y);
+    if (w < 5 && h < 5) {
+      if (!start.shift) this.app.select(null); // simple empty click
+      return;
+    }
+    const app = this.app;
+    const canvas = app.viewport.canvas.getBoundingClientRect();
+    const minX = Math.min(start.x, ev.clientX) - canvas.left;
+    const maxX = Math.max(start.x, ev.clientX) - canvas.left;
+    const minY = Math.min(start.y, ev.clientY) - canvas.top;
+    const maxY = Math.max(start.y, ev.clientY) - canvas.top;
+
+    if (!start.shift) app.select(null);
+    const picked = new Set();
+    for (const [id, obj] of app.model.objects) {
+      const e = app.model.entities.get(id);
+      if (!e || !obj.visible) continue;
+      const box = new THREE.Box3().setFromObject(obj);
+      if (box.isEmpty()) continue;
+      let bMinX = Infinity, bMaxX = -Infinity, bMinY = Infinity, bMaxY = -Infinity;
+      for (const cx of [box.min.x, box.max.x])
+        for (const cy of [box.min.y, box.max.y])
+          for (const cz of [box.min.z, box.max.z]) {
+            const s = app.viewport.worldToScreen(new THREE.Vector3(cx, cy, cz));
+            bMinX = Math.min(bMinX, s.x); bMaxX = Math.max(bMaxX, s.x);
+            bMinY = Math.min(bMinY, s.y); bMaxY = Math.max(bMaxY, s.y);
+          }
+      if (bMaxX >= minX && bMinX <= maxX && bMaxY >= minY && bMinY <= maxY) {
+        for (const gid of app.groupIdsOf(id)) picked.add(gid);
+      }
+    }
+    for (const id of picked) {
+      if (!app.isSelected(id)) app.select(id, { additive: true });
+    }
+    app.ui.setHint(`${app.selection.size} selected. ` + this.hint);
+  }
+
+  endBox() {
+    this.boxStart = null;
+    this.boxEl?.remove();
+    this.boxEl = null;
   }
 }
 
@@ -184,10 +263,12 @@ export class MoveTool extends Tool {
     if (!e) return;
     app.history.checkpoint();
 
-    // whole selection moves if the picked entity is part of it
-    let ids = app.isSelected(e.id) && app.selection.size > 1 ? [...app.selection] : [e.id];
+    // whole selection moves if the picked entity is part of it; else its group
+    let ids = app.isSelected(e.id) && app.selection.size > 1
+      ? [...app.selection]
+      : app.groupIdsOf(e.id);
     if (ev.ctrlKey || ev.metaKey) {
-      ids = ids.map(id => app.model.cloneEntity(id).id); // move the copies
+      ids = cloneEntitiesRegrouped(app.model, ids).map(c => c.id); // move the copies
     }
     this.targets = ids.map(id => app.model.entities.get(id)).filter(Boolean);
     app.select(null);
@@ -230,10 +311,9 @@ export class MoveTool extends Tool {
       if (n < 2 || n > 200) return;
       this.app.history.checkpoint();
       this.app.model.batch(() => {
-        for (const id of this.lastMove.ids) {
-          for (let k = 1; k < n; k++) {
-            const copy = this.app.model.cloneEntity(id);
-            if (!copy) continue;
+        for (let k = 1; k < n; k++) {
+          const copies = cloneEntitiesRegrouped(this.app.model, this.lastMove.ids);
+          for (const copy of copies) {
             translateEntity(copy, this.lastMove.vector.clone().multiplyScalar(k));
             this.app.model.update(copy);
           }
@@ -294,7 +374,9 @@ export class RotateTool extends Tool {
       const hit = app.viewport.pick(app.model.pickables(true));
       if (!hit) return;
       const e = app.model.entities.get(hit.object.userData.entityId);
-      const ids = app.isSelected(e.id) && app.selection.size > 1 ? [...app.selection] : [e.id];
+      const ids = app.isSelected(e.id) && app.selection.size > 1
+        ? [...app.selection]
+        : app.groupIdsOf(e.id);
       this.targets = ids.map(id => app.model.entities.get(id)).filter(Boolean);
     } else if (!this.pivot) {
       const snap = app.snapper.resolve(ev, app.viewport.groundPlane);
@@ -403,9 +485,10 @@ export class EraserTool extends Tool {
     app.viewport.setPointerFromEvent(ev);
     const hit = app.viewport.pick(app.model.pickables(true));
     if (!hit) return;
-    const id = hit.object.userData.entityId;
+    const ids = app.groupIdsOf(hit.object.userData.entityId);
     app.history.checkpoint();
-    app.model.remove(id);
-    app.deselect(id);
+    app.model.batch(() => {
+      for (const id of ids) { app.model.remove(id); app.deselect(id); }
+    });
   }
 }

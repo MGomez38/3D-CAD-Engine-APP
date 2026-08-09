@@ -53,7 +53,30 @@ export function translateEntity(e, delta) {
   } else if (e.type === 'dimension') {
     e.p1 = [e.p1[0] + delta.x, e.p1[1] + delta.y, e.p1[2] + delta.z];
     e.p2 = [e.p2[0] + delta.x, e.p2[1] + delta.y, e.p2[2] + delta.z];
+  } else if (e.type === 'label') {
+    e.position = [e.position[0] + delta.x, e.position[1] + delta.y, e.position[2] + delta.z];
   }
+}
+
+/**
+ * Clone a set of entities preserving their group structure: entities that
+ * shared a group get a fresh shared groupId; ungrouped clones stay ungrouped.
+ */
+export function cloneEntitiesRegrouped(model, ids) {
+  const gidMap = new Map();
+  const clones = [];
+  for (const id of ids) {
+    const copy = model.cloneEntity(id);
+    if (!copy) continue;
+    if (copy.groupId) {
+      if (!gidMap.has(copy.groupId)) {
+        gidMap.set(copy.groupId, `grp${Date.now().toString(36)}${Math.floor(Math.random() * 1e5)}`);
+      }
+      copy.groupId = gidMap.get(copy.groupId);
+    }
+    clones.push(copy);
+  }
+  return clones;
 }
 
 export function rotateEntityY(e, pivot, angle) {
@@ -78,6 +101,8 @@ export function rotateEntityY(e, pivot, angle) {
   } else if (e.type === 'dimension') {
     e.p1 = rotPoint(e.p1);
     e.p2 = rotPoint(e.p2);
+  } else if (e.type === 'label') {
+    e.position = rotPoint(e.position);
   }
 }
 

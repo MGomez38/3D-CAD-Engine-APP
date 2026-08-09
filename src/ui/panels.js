@@ -70,6 +70,60 @@ export function buildLayersPanel(listEl, addBtn, model, history) {
 }
 
 // ---------------------------------------------------------------------------
+// Saved views (scenes): snapshot camera angles, restore with one click.
+
+export function buildScenesPanel(listEl, addBtn, model, viewport) {
+  function render() {
+    listEl.innerHTML = '';
+    if (!model.scenes.length) {
+      listEl.innerHTML = '<div class="muted">None yet — set up a view and save it</div>';
+      return;
+    }
+    for (const scene of model.scenes) {
+      const row = document.createElement('div');
+      row.className = 'layer-row';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = scene.name;
+      name.title = 'Click to restore · double-click to rename';
+      name.addEventListener('dblclick', (ev) => {
+        ev.stopPropagation();
+        const n = prompt('View name', scene.name);
+        if (n) { scene.name = n; model.changed(); }
+      });
+      const del = document.createElement('button');
+      del.className = 'vis';
+      del.textContent = '×';
+      del.title = 'Delete this view';
+      del.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        model.scenes = model.scenes.filter(s => s.id !== scene.id);
+        model.changed();
+      });
+      row.append(name, del);
+      row.addEventListener('click', () => {
+        viewport.camera.position.set(...scene.position);
+        viewport.controls.target.set(...scene.target);
+        viewport.controls.update();
+      });
+      listEl.appendChild(row);
+    }
+  }
+
+  addBtn.addEventListener('click', () => {
+    model.scenes.push({
+      id: `sc${Date.now().toString(36)}`,
+      name: `View ${model.scenes.length + 1}`,
+      position: viewport.camera.position.toArray(),
+      target: viewport.controls.target.toArray(),
+    });
+    model.changed();
+  });
+
+  return { render };
+}
+
+// ---------------------------------------------------------------------------
 // Entity info — editable name & material for solids, weight readout,
 // summary for multi-selections.
 
@@ -82,6 +136,7 @@ export function renderEntityInfo(el, model, selection, { onEdit } = {}) {
 
   if (ids.length > 1) {
     let weight = 0, solids = 0;
+    const gids = new Set(ids.map(id => model.entities.get(id).groupId ?? null));
     for (const id of ids) {
       const e = model.entities.get(id);
       if (e.type === 'solid') {
@@ -89,10 +144,13 @@ export function renderEntityInfo(el, model, selection, { onEdit } = {}) {
         weight += computeArea(e) * Math.abs(e.depth) * materialById(e.material).density;
       }
     }
+    const isGroup = gids.size === 1 && !gids.has(null);
     el.innerHTML =
-      `<div><b>${ids.length}</b> objects selected</div>` +
+      `<div><b>${ids.length}</b> objects selected${isGroup ? ' <b>(group)</b>' : ''}</div>` +
       (solids ? `<div>Total weight: <b>${weight.toFixed(1)} lb</b></div>` : '') +
-      '<div class="muted">Move/Rotate act on the whole selection</div>';
+      (isGroup
+        ? '<div class="muted">Ctrl+Shift+G ungroups</div>'
+        : '<div class="muted">Ctrl+G groups them into one object</div>');
     return;
   }
 
@@ -129,8 +187,21 @@ export function renderEntityInfo(el, model, selection, { onEdit } = {}) {
   } else if (e.type === 'dimension') {
     row('Type', 'Dimension');
     row('Length', e.label);
+  } else if (e.type === 'label') {
+    row('Type', 'Note');
   }
   el.innerHTML = rows.join('');
+
+  if (e.type === 'label') {
+    const lbl = document.createElement('label');
+    lbl.textContent = 'Text ';
+    const input = document.createElement('input');
+    input.value = e.text || '';
+    input.addEventListener('change', () => onEdit?.(e.id, { text: input.value }));
+    input.addEventListener('keydown', ev => ev.stopPropagation());
+    lbl.appendChild(input);
+    el.appendChild(lbl);
+  }
 
   // ---- parametric edits (Fusion-style: change dimensions after the fact) ----
   const addField = (labelText, value, apply) => {

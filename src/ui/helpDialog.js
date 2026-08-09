@@ -43,12 +43,16 @@ export function showHelpDialog(app) {
             <tr><td><kbd>O</kbd></td><td>Door/Window</td><td><kbd>M</kbd></td><td>Move (Ctrl copies)</td></tr>
             <tr><td><kbd>Q</kbd></td><td>Rotate</td><td><kbd>T</kbd></td><td>Dimension</td></tr>
             <tr><td><kbd>B</kbd></td><td>Railing designer</td><td><kbd>E</kbd></td><td>Eraser</td></tr>
+            <tr><td><kbd>N</kbd></td><td>Note callout</td><td><kbd>X</kbd></td><td>Section cut</td></tr>
             <tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Command palette</td><td><kbd>H</kbd></td><td>This help</td></tr>
           </table>
           <h3>Editing</h3>
           <table class="help-keys">
             <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd></td><td>Undo / Redo</td></tr>
             <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>V</kbd></td><td>Copy / Paste</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>Select all</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>G</kbd> / <kbd>+Shift</kbd></td><td>Group / Ungroup selection</td></tr>
+            <tr><td>Drag on empty space</td><td>Box-select many objects</td></tr>
             <tr><td><kbd>x5</kbd> after a move</td><td>Array 5 along that vector</td></tr>
             <tr><td>Double-click</td><td>Close a Line shape</td></tr>
             <tr><td>Entity panel</td><td>Edit sizes after placing (parametric)</td></tr>
