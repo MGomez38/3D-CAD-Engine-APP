@@ -55,6 +55,8 @@ export function translateEntity(e, delta) {
     e.p2 = [e.p2[0] + delta.x, e.p2[1] + delta.y, e.p2[2] + delta.z];
   } else if (e.type === 'label') {
     e.position = [e.position[0] + delta.x, e.position[1] + delta.y, e.position[2] + delta.z];
+  } else if (e.type === 'edge') {
+    e.points = e.points.map(p => [p[0] + delta.x, p[1] + delta.y, p[2] + delta.z]);
   }
 }
 
@@ -103,6 +105,8 @@ export function rotateEntityY(e, pivot, angle) {
     e.p2 = rotPoint(e.p2);
   } else if (e.type === 'label') {
     e.position = rotPoint(e.position);
+  } else if (e.type === 'edge') {
+    e.points = e.points.map(rotPoint);
   }
 }
 

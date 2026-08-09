@@ -74,8 +74,8 @@ export class LineTool extends SketchTool {
 
   get hint() {
     return this.points.length
-      ? 'Click next point — close on the first point · hold Shift to lock the axis · length or "@dx,dy" + Enter · Esc cancels'
-      : 'Line: click to start a shape on the ground or on a face (or type "x,y" + Enter)';
+      ? 'Click next point · Enter keeps it as a line · close on the first point (or double-click) to make a face · Shift locks axis · Esc cancels'
+      : 'Line: click to start — line ends snap together, so new lines connect to old ones';
   }
 
   onPointerMove(ev) {
@@ -116,6 +116,7 @@ export class LineTool extends SketchTool {
 
   onDoubleClick() {
     if (this.points.length >= 3) this.finish();
+    else if (this.points.length >= 2) this.finishOpen();
   }
 
   onVCB(text) {
@@ -129,6 +130,7 @@ export class LineTool extends SketchTool {
     this.placePoint2(this.toPlane(world));
   }
 
+  /** Close the loop into a face (Push/Pull-able). */
   finish() {
     if (this.points.length >= 3) {
       this.app.history.checkpoint();
@@ -142,8 +144,21 @@ export class LineTool extends SketchTool {
     this.app.ui.setHint('Shape closed. Use Push/Pull (P) to give it depth.');
   }
 
+  /** Keep the run as an open line — its ends and midpoints become snap targets. */
+  finishOpen() {
+    if (this.points.length >= 2) {
+      this.app.history.checkpoint();
+      this.app.model.addEdge({
+        points: this.points.map(p => planeToWorld(this.plane, p.x, p.y).toArray()),
+      });
+    }
+    this.reset();
+    this.app.ui.setHint('Line saved — its ends snap, so your next line connects right to it.');
+  }
+
   onKeyDown(ev) {
-    if (ev.key === 'Enter' && this.points.length >= 3) this.finish();
+    if (ev.key !== 'Enter') return;
+    if (this.points.length >= 2) this.finishOpen();
   }
 }
 

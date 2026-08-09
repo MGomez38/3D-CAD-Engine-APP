@@ -14,7 +14,9 @@ export function showHelpDialog(app) {
         <div>
           <h3>Quick start — 60 seconds</h3>
           <ol class="help-steps">
-            <li><b>Draw</b> — press <kbd>R</kbd>, click two corners of a rectangle.</li>
+            <li><b>Draw</b> — press <kbd>R</kbd>, click two corners of a rectangle.
+              (With <kbd>L</kbd>: Enter keeps an open line whose ends snap;
+              close the loop for a face.)</li>
             <li><b>Go 3D</b> — press <kbd>P</kbd>, click the shape, move up, type <kbd>36</kbd> <kbd>Enter</kbd>.</li>
             <li><b>Annotate</b> — press <kbd>T</kbd>, click two corners to place a dimension.</li>
             <li><b>Deliver</b> — click <b>Drawing Sheet…</b>, pick a scale, print to PDF.</li>

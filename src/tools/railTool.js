@@ -31,6 +31,24 @@ export class RailTool extends Tool {
     this._lastSnap = null;
     this.app?.preview?.clear();
     this.app?.snapper?.hide();
+    this.hideChip();
+  }
+
+  /** Floating confirm button so nobody has to guess about the Enter key. */
+  showChip() {
+    if (this.chip) return;
+    this.chip = document.createElement('button');
+    this.chip.id = 'rail-confirm';
+    this.chip.className = 'confirm-chip';
+    this.chip.textContent = '✓ Build railing';
+    this.chip.title = 'Or press Enter / double-click';
+    this.chip.addEventListener('click', () => this.commit());
+    document.getElementById('viewport-wrap').appendChild(this.chip);
+  }
+
+  hideChip() {
+    this.chip?.remove();
+    this.chip = null;
   }
 
   lastPoint3() {
@@ -63,6 +81,7 @@ export class RailTool extends Tool {
     const last = this.path[this.path.length - 1];
     if (last && Math.hypot(x - last.x, z - last.z) < 0.5) return; // dedupe dbl-click
     this.path.push({ x, z });
+    if (this.path.length >= 2) this.showChip();
     this.app.ui.setHint(this.hint);
   }
 

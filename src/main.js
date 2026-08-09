@@ -497,7 +497,9 @@ class App {
     const b = new THREE.Box3();
     for (const [id, obj] of this.model.objects) {
       const e = this.model.entities.get(id);
-      if (e && (e.type === 'solid' || e.type === 'profile') && obj.visible) b.expandByObject(obj);
+      if (e && (e.type === 'solid' || e.type === 'profile' || e.type === 'edge') && obj.visible) {
+        b.expandByObject(obj);
+      }
     }
     return b;
   }
@@ -611,6 +613,7 @@ class App {
               }
               const adder = copy.type === 'dimension' ? 'addDimension'
                 : copy.type === 'label' ? 'addLabel'
+                : copy.type === 'edge' ? 'addEdge'
                 : copy.type === 'profile' ? 'addProfile' : 'addSolid';
               const added = this.model[adder](copy);
               translateEntity(added, new THREE.Vector3(12, 0, 12));

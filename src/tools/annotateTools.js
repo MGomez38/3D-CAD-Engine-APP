@@ -106,6 +106,7 @@ export class ComponentTool extends Tool {
         copy.groupId = gid;
         const adder = copy.type === 'dimension' ? 'addDimension'
           : copy.type === 'label' ? 'addLabel'
+          : copy.type === 'edge' ? 'addEdge'
           : copy.type === 'profile' ? 'addProfile' : 'addSolid';
         const added = app.model[adder](copy);
         translateEntity(added, delta);

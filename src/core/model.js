@@ -135,6 +135,15 @@ export class Model {
     return e;
   }
 
+  /** Open polyline: { points: [[x,y,z], ...] } in world coords. */
+  addEdge(edge) {
+    const e = { id: newId(), type: 'edge', layerId: this.activeLayerId, ...edge };
+    this.entities.set(e.id, e);
+    this.rebuildObject(e);
+    this.changed();
+    return e;
+  }
+
   remove(id) {
     const obj = this.objects.get(id);
     if (obj) { this.group.remove(obj); disposeObject(obj); this.objects.delete(id); }
@@ -179,6 +188,7 @@ export class Model {
     else if (e.type === 'solid') obj = buildSolidObject(e, this.layer(e.layerId));
     else if (e.type === 'dimension') obj = buildDimensionObject(e, this.layer(e.layerId));
     else if (e.type === 'label') obj = buildLabelObject(e);
+    else if (e.type === 'edge') obj = buildEdgeObject(e, this.layer(e.layerId));
     if (!obj) return;
     obj.userData.entityId = e.id;
     obj.traverse(c => (c.userData.entityId = e.id));
@@ -199,7 +209,8 @@ export class Model {
       if (!e || !obj.visible) continue;
       if (e.type === 'solid' || e.type === 'profile') {
         obj.traverse(c => { if (c.isMesh) list.push(c); });
-      } else if (includeDimensions && (e.type === 'dimension' || e.type === 'label')) {
+      } else if (includeDimensions
+        && (e.type === 'dimension' || e.type === 'label' || e.type === 'edge')) {
         obj.traverse(c => { if (c.isLine || c.isSprite) list.push(c); });
       }
     }
@@ -232,6 +243,16 @@ export class Model {
         pts.push(new THREE.Vector3(...e.p1), new THREE.Vector3(...e.p2));
       } else if (e.type === 'label') {
         pts.push(new THREE.Vector3(...e.position));
+      } else if (e.type === 'edge') {
+        // every vertex plus segment midpoints — lines connect to lines
+        for (let i = 0; i < e.points.length; i++) {
+          pts.push(new THREE.Vector3(...e.points[i]));
+          if (i > 0) {
+            const a = e.points[i - 1], b = e.points[i];
+            pts.push(new THREE.Vector3(
+              (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2));
+          }
+        }
       }
     }
     return pts;
@@ -431,6 +452,23 @@ function buildDimensionObject(e) {
   const label = makeTextSprite(e.label || '', DIM_COLOR, spriteScale);
   label.position.copy(a.clone().add(b).multiplyScalar(0.5)).add(off.clone().normalize().multiplyScalar(3));
   group.add(label);
+  return group;
+}
+
+function buildEdgeObject(e, layer) {
+  const group = new THREE.Group();
+  const pts = e.points.map(p => new THREE.Vector3(...p));
+  const line = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color: new THREE.Color(layer.color).multiplyScalar(1.15) }));
+  group.add(line);
+  // endpoint dots so open ends are easy to see and pick up
+  const dotMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(layer.color) });
+  for (const p of [pts[0], pts[pts.length - 1]]) {
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), dotMat);
+    dot.position.copy(p);
+    group.add(dot);
+  }
   return group;
 }
 

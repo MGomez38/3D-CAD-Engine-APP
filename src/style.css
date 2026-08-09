@@ -146,6 +146,17 @@ table.cutlist { width: 100%; border-collapse: collapse; font-size: 11px; margin-
   border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px;
 }
 
+/* ---------- Floating confirm chip ---------- */
+.confirm-chip {
+  position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+  z-index: 6;
+  background: var(--accent); color: #fff; border: none;
+  padding: 9px 22px; border-radius: 20px; font-size: 14px; font-weight: 600;
+  box-shadow: 0 6px 24px rgba(76, 141, 255, 0.45);
+  cursor: pointer;
+}
+.confirm-chip:hover { background: #5e9aff; }
+
 /* ---------- Box selection ---------- */
 .select-box {
   position: absolute; z-index: 5; pointer-events: none;

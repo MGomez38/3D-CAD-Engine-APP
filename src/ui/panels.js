@@ -189,6 +189,15 @@ export function renderEntityInfo(el, model, selection, { onEdit } = {}) {
     row('Length', e.label);
   } else if (e.type === 'label') {
     row('Type', 'Note');
+  } else if (e.type === 'edge') {
+    row('Type', 'Line');
+    let len = 0;
+    for (let i = 1; i < e.points.length; i++) {
+      const a = e.points[i - 1], b = e.points[i];
+      len += Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    }
+    row('Length', Units.format(len));
+    row('Segments', String(e.points.length - 1));
   }
   el.innerHTML = rows.join('');
 
