@@ -11,7 +11,10 @@ import { Units } from './core/units.js';
 
 import { Settings, loadSettings, saveSettings } from './core/settings.js';
 import { buildToolbar, TOOLS } from './ui/toolbar.js';
-import { buildLayersPanel, renderEntityInfo, buildCutListPanel, buildScenesPanel } from './ui/panels.js';
+import {
+  buildLayersPanel, renderEntityInfo, buildCutListPanel,
+  buildScenesPanel, buildComponentsPanel,
+} from './ui/panels.js';
 import { showSheetDialog } from './ui/sheetDialog.js';
 import { showInsertDialog } from './ui/insertDialog.js';
 import { showOpeningDialog } from './ui/openingDialog.js';
@@ -26,8 +29,10 @@ import { RailTool } from './tools/railTool.js';
 import { LineTool, RectTool, CircleTool, PolygonTool } from './tools/drawTools.js';
 import { InsertTool } from './tools/insertTool.js';
 import { WallTool, OpeningTool } from './tools/wallTool.js';
-import { SectionTool, LabelTool } from './tools/annotateTools.js';
+import { SectionTool, LabelTool, ComponentTool } from './tools/annotateTools.js';
 import { translateEntity } from './tools/common.js';
+import { saveComponent } from './lib/components.js';
+import { encodeModelToHash, decodeModelFromHash } from './lib/share.js';
 import {
   SelectTool, PushPullTool, MoveTool, RotateTool, DimensionTool, EraserTool,
 } from './tools/modifyTools.js';
@@ -100,6 +105,7 @@ class App {
       dimension: new DimensionTool(this),
       label: new LabelTool(this),
       section: new SectionTool(this),
+      component: new ComponentTool(this),
       eraser: new EraserTool(this),
     };
     this.sectionY = null;
@@ -122,6 +128,8 @@ class App {
     this.layersUI = buildLayersPanel($('#layers-list'), $('#btn-add-layer'), this.model, this.history);
     this.cutListUI = buildCutListPanel($('#cutlist-body'), $('#btn-cutlist-csv'), this.model);
     this.scenesUI = buildScenesPanel($('#scenes-list'), $('#btn-add-scene'), this.model, this.viewport);
+    this.componentsUI = buildComponentsPanel($('#components-list'), $('#btn-save-component'), this);
+    this.componentsUI.render();
 
     this.model.onChange = () => {
       this.layersUI.render();
@@ -136,8 +144,11 @@ class App {
     this.palette = buildCommandPalette([
       ...TOOLS.map(t => ({ id: t.id, title: `Tool: ${t.label}`, hint: t.keyLabel, run: () => this.setTool(t.id) })),
       { title: 'Drawing Sheet… (PDF)', run: () => showSheetDialog(this.model) },
+      { title: 'Share link (send to a customer)', run: () => this.shareProject() },
+      { title: 'Export PNG snapshot', run: () => this.exportPNG() },
       { title: 'Export DXF (flat parts)', run: () => this.exportDXF() },
       { title: 'Export STL', run: () => this.exportSTL() },
+      { title: 'Save selection as component', run: () => this.saveSelectionAsComponent() },
       { title: 'Save project', hint: 'Ctrl+S', run: () => this.saveProject() },
       { title: 'Open project', run: () => $('#file-open').click() },
       { title: 'New project', run: () => $('#btn-new').click() },
@@ -150,8 +161,10 @@ class App {
     ]);
     $('#btn-palette').addEventListener('click', () => this.palette.open());
     this.setTool('line');
-    this.restoreAutosave();
-    this.model.changed();
+    this.loadFromHash().then(loaded => {
+      if (!loaded) this.restoreAutosave();
+      this.model.changed();
+    });
     this.viewport.startLoop();
     showWelcomeBanner(this);
     this.ui.setHint('Welcome! Draw a rectangle (R), then Push/Pull (P) to make it 3D. Middle-drag orbits, right-drag pans, scroll zooms. Press H for help.');
@@ -273,6 +286,9 @@ class App {
       layout: () => showSheetDialog(this.model),
       dxf: () => this.exportDXF(),
       stl: () => this.exportSTL(),
+      png: () => this.exportPNG(),
+      image: () => this.exportPNG(),
+      share: () => this.shareProject(),
       save: () => this.saveProject(),
       settings: () => showSettingsDialog(),
       config: () => showSettingsDialog(),
@@ -372,6 +388,85 @@ class App {
     }
     this.model.changed();
     this.ui.setHint('Ungrouped.');
+  }
+
+  // ---- components ---------------------------------------------------------
+
+  saveSelectionAsComponent() {
+    if (!this.selection.size) {
+      this.ui.setHint('Select the objects first (click, Shift+click, or drag a box), then save them as a component.');
+      return;
+    }
+    const name = prompt('Component name (e.g. "Standard post assembly"):', '');
+    if (!name || !name.trim()) return;
+    const box = new THREE.Box3();
+    const entities = [];
+    for (const id of this.selection) {
+      const e = this.model.entities.get(id);
+      const obj = this.model.objects.get(id);
+      if (!e || !obj) continue;
+      box.expandByObject(obj);
+      entities.push(JSON.parse(JSON.stringify(e)));
+    }
+    if (!entities.length || box.isEmpty()) return;
+    const size = box.getSize(new THREE.Vector3());
+    const ok = saveComponent(name.trim(), entities, box.min.toArray(), size.toArray());
+    this.componentsUI.render();
+    this.ui.setHint(ok
+      ? `Saved "${name.trim()}" (${entities.length} parts) — click it in the Components panel to place copies.`
+      : 'Could not save — browser storage is full.');
+  }
+
+  placeComponent(comp) {
+    this.tools.component.config = comp;
+    this._activateTool('component');
+  }
+
+  // ---- sharing & images ---------------------------------------------------
+
+  async shareProject() {
+    try {
+      const data = await encodeModelToHash(this.model.serialize());
+      const url = `${location.origin}${location.pathname}#m=${data}`;
+      let copied = false;
+      try { await navigator.clipboard.writeText(url); copied = true; } catch { /* clipboard blocked */ }
+      showShareDialog(url, copied);
+      this.ui.setHint(`Share link ready (${Math.round(url.length / 1024)} KB)${copied ? ' — copied to clipboard.' : '.'}`);
+      return url;
+    } catch (err) {
+      this.ui.setHint(`Could not create share link: ${err.message}`);
+      return null;
+    }
+  }
+
+  async loadFromHash() {
+    const m = /^#m=(.+)$/.exec(location.hash);
+    if (!m) return false;
+    try {
+      const doc = await decodeModelFromHash(m[1]);
+      this.model.load(doc);
+      this.syncProjectInfoInputs();
+      this.select(null);
+      this.viewport.zoomToFit(this.modelBounds());
+      this.ui.setHint('Shared project loaded — this is your own copy; edits stay on your device.');
+      return true;
+    } catch {
+      this.ui.setHint('That share link could not be read.');
+      return false;
+    }
+  }
+
+  exportPNG() {
+    const { renderer, scene, camera } = this.viewport;
+    renderer.clear();
+    renderer.render(scene, camera); // fresh frame, no gizmo overlay
+    const url = renderer.domElement.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    const name = (this.model.projectInfo.project || 'cadshop').replace(/[^\w-]+/g, '_');
+    a.download = `${name}.png`;
+    a.click();
+    this.ui.setHint('Snapshot saved as PNG.');
   }
 
   /** Live horizontal section cut at height y (null clears it). */
@@ -608,6 +703,8 @@ class App {
     $('#btn-sheet').addEventListener('click', () => showSheetDialog(this.model));
     $('#btn-export-stl').addEventListener('click', () => this.exportSTL());
     $('#btn-export-dxf').addEventListener('click', () => this.exportDXF());
+    $('#btn-share').addEventListener('click', () => this.shareProject());
+    $('#btn-export-png').addEventListener('click', () => this.exportPNG());
     $('#btn-zoom-fit').addEventListener('click', () => this.viewport.zoomToFit(this.modelBounds()));
     document.querySelectorAll('#topbar .views [data-view]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -676,6 +773,37 @@ class App {
     const name = (this.model.projectInfo.project || 'model').replace(/[^\w-]+/g, '_');
     downloadBlob(new Blob([stl], { type: 'model/stl' }), `${name}.stl`);
   }
+}
+
+function showShareDialog(url, copied) {
+  let dlg = document.getElementById('share-dialog');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'share-dialog';
+    dlg.innerHTML = `
+      <h2>Share this project</h2>
+      <p class="muted" style="margin-bottom:10px">Anyone with this link opens the full 3D model in
+      their browser — nothing to install. They get their own copy; your original is untouched.</p>
+      <div class="row"><label>Link <input id="share-url" readonly></label></div>
+      <div class="actions">
+        <button id="share-copy" class="accent">Copy link</button>
+        <button id="share-close">Close</button>
+      </div>`;
+    document.body.appendChild(dlg);
+    dlg.querySelector('#share-close').addEventListener('click', () => dlg.close());
+    dlg.querySelector('#share-copy').addEventListener('click', async () => {
+      const input = dlg.querySelector('#share-url');
+      input.select();
+      try { await navigator.clipboard.writeText(input.value); } catch { document.execCommand('copy'); }
+      dlg.querySelector('#share-copy').textContent = 'Copied ✓';
+      setTimeout(() => { dlg.querySelector('#share-copy').textContent = 'Copy link'; }, 1500);
+    });
+  }
+  const input = dlg.querySelector('#share-url');
+  input.value = url;
+  dlg.querySelector('#share-copy').textContent = copied ? 'Copied ✓' : 'Copy link';
+  dlg.showModal();
+  input.select();
 }
 
 function downloadBlob(blob, filename) {

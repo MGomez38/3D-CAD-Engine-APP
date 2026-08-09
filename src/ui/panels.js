@@ -321,6 +321,47 @@ function scaleRect(points, holes, newW, newH) {
 }
 
 // ---------------------------------------------------------------------------
+// Component library panel
+
+import { listComponents, deleteComponent } from '../lib/components.js';
+
+export function buildComponentsPanel(listEl, saveBtn, app) {
+  function render() {
+    const comps = listComponents();
+    listEl.innerHTML = '';
+    if (!comps.length) {
+      listEl.innerHTML = '<div class="muted">Select objects, then save them as a reusable part</div>';
+      return;
+    }
+    for (const c of comps) {
+      const row = document.createElement('div');
+      row.className = 'layer-row';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = `${c.name} (${c.entities.length})`;
+      name.title = 'Click to place into the model';
+      const del = document.createElement('button');
+      del.className = 'vis';
+      del.textContent = '×';
+      del.title = 'Delete from library';
+      del.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (confirm(`Delete component "${c.name}" from your library?`)) {
+          deleteComponent(c.id);
+          render();
+        }
+      });
+      row.append(name, del);
+      row.addEventListener('click', () => app.placeComponent(c));
+      listEl.appendChild(row);
+    }
+  }
+
+  saveBtn.addEventListener('click', () => app.saveSelectionAsComponent());
+  return { render };
+}
+
+// ---------------------------------------------------------------------------
 // Cut list panel
 
 export function buildCutListPanel(el, csvBtn, model) {

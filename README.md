@@ -52,8 +52,12 @@ posts), top rail flush at the target height, mid-rails or vertical pickets at
 the 4"-sphere-rule spacing, and **bolt-hole baseplates** under every post.
 
 - Presets: Industrial guardrail 42" (2 mid rails) · Picket guardrail 42" ·
-  Pipe handrail 36" · Heavy HSS 2x2 guardrail — every member swappable
-  (HSS, Sch 40 pipe, square bar) and any material.
+  Pipe handrail 36" · **Stair handrail/guardrail @ 32°** · Heavy HSS 2x2 —
+  every member swappable (HSS, Sch 40 pipe, square bar) and any material.
+- **Stair mode**: pick "Stairs (sloped)" and an angle — the top rail runs
+  parallel to the flight, posts stay vertical at constant length, pickets and
+  baseplates climb the stringer, and the cut list shows true sloped rail
+  lengths for material ordering.
 - **Code awareness**: warns when a guardrail is under 42", a handrail is
   outside 34"–38", posts exceed 72" spacing, or picket gaps exceed 4".
 - Every part lands in the cut list with correct specs and weights, and the
@@ -165,6 +169,13 @@ Toolbar buttons switch to standard Iso / Top / Front / Right views.
   with a 60-second tutorial and full shortcut reference, and a built-in
   example project (a complete welding workbench with named parts, materials,
   dimensions, and a live cut list). Double-click closes Line shapes.
+- **Component library** — save any selection as a named reusable part
+  (your standard post assembly, a gate, a bracket) and stamp copies into any
+  future project from the Components panel; each placement is its own group.
+- **Share links** — one click compresses the whole project into a URL; anyone
+  who opens it gets the full 3D model in their browser, nothing to install.
+  Perfect for sending designs to customers with a quote.
+- **PNG snapshots** — save the current view as an image for emails and quotes.
 - **Groups** — Ctrl+G binds objects into one unit that selects, moves,
   rotates, copies, arrays, and erases together (railings auto-group);
   Ctrl+Shift+G ungroups. Copies of groups become independent groups.

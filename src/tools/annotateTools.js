@@ -1,4 +1,5 @@
-import { Tool } from './common.js';
+import * as THREE from 'three';
+import { Tool, translateEntity } from './common.js';
 import { Units } from '../core/units.js';
 
 // ---------------------------------------------------------------------------
@@ -44,6 +45,74 @@ export class SectionTool extends Tool {
       this.app.setSection(null);
       this.app.ui.setHint(this.hint);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Component placement: stamp a saved component into the model. Each placement
+// becomes its own group, anchored by the component's min corner on the ground.
+
+export class ComponentTool extends Tool {
+  constructor(app) {
+    super(app);
+    this.config = null; // { name, anchor, size, entities }
+  }
+
+  get hint() {
+    return this.config
+      ? `Placing "${this.config.name}" — click to place, Esc to stop`
+      : 'Pick a component from the Components panel first';
+  }
+
+  deactivate() { this.app.preview.clear(); }
+  cancel() { this.app.preview.clear(); }
+
+  footprint(at) {
+    const [w, , d] = this.config.size;
+    const y = 0.5;
+    return [
+      new THREE.Vector3(at.x, y, at.z),
+      new THREE.Vector3(at.x + w, y, at.z),
+      new THREE.Vector3(at.x + w, y, at.z - d),
+      new THREE.Vector3(at.x, y, at.z - d),
+      new THREE.Vector3(at.x, y, at.z),
+    ];
+  }
+
+  onPointerMove(ev) {
+    if (!this.config) return;
+    const snap = this.app.snapper.resolve(ev, this.app.viewport.groundPlane);
+    if (!snap) return;
+    this.app.preview.showPolyline(this.footprint(snap.point));
+    this.app.ui.setCursorTip(ev, this.config.name);
+  }
+
+  onPointerDown(ev) {
+    if (ev.button !== 0 || !this.config) return;
+    const app = this.app;
+    const snap = app.snapper.resolve(ev, app.viewport.groundPlane);
+    if (!snap) return;
+    const [ax, ay, az] = this.config.anchor;
+    // click = south-west corner of the footprint, base dropped to the ground:
+    // x aligns to min-x, z aligns to max-z (= min-z + depth)
+    const delta = new THREE.Vector3(
+      snap.point.x - ax, -ay, snap.point.z - (az + this.config.size[2]));
+    app.history.checkpoint();
+    const gid = `grp${Date.now().toString(36)}${Math.floor(Math.random() * 1e5)}`;
+    app.model.batch(() => {
+      for (const src of this.config.entities) {
+        const copy = JSON.parse(JSON.stringify(src));
+        delete copy.id;
+        copy.groupId = gid;
+        const adder = copy.type === 'dimension' ? 'addDimension'
+          : copy.type === 'label' ? 'addLabel'
+          : copy.type === 'profile' ? 'addProfile' : 'addSolid';
+        const added = app.model[adder](copy);
+        translateEntity(added, delta);
+        app.model.update(added);
+      }
+    });
+    app.ui.setHint(`Placed "${this.config.name}" (${this.config.entities.length} parts). Click to place another.`);
   }
 }
 

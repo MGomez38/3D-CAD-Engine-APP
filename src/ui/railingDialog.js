@@ -40,10 +40,12 @@ const BASEPLATES = [
 ];
 
 const PRESETS = [
-  { label: 'Industrial guardrail 42" — 2 mid rails', system: 'guardrail', height: 42, spacing: 48, post: 'hss15', rail: 'hss15', infill: 'mid2', bp: 'bp44' },
-  { label: 'Picket guardrail 42" — 4" sphere rule', system: 'guardrail', height: 42, spacing: 48, post: 'hss15', rail: 'hss15', infill: 'pickets', bp: 'bp44' },
-  { label: 'Pipe handrail 36"', system: 'handrail', height: 36, spacing: 48, post: 'pipe15', rail: 'pipe15', infill: 'none', bp: 'bp44' },
-  { label: 'Heavy guardrail 42" — HSS 2x2', system: 'guardrail', height: 42, spacing: 60, post: 'hss2', rail: 'hss15', infill: 'mid2', bp: 'bp66' },
+  { label: 'Industrial guardrail 42" — 2 mid rails', system: 'guardrail', height: 42, spacing: 48, post: 'hss15', rail: 'hss15', infill: 'mid2', bp: 'bp44', run: 'level' },
+  { label: 'Picket guardrail 42" — 4" sphere rule', system: 'guardrail', height: 42, spacing: 48, post: 'hss15', rail: 'hss15', infill: 'pickets', bp: 'bp44', run: 'level' },
+  { label: 'Pipe handrail 36"', system: 'handrail', height: 36, spacing: 48, post: 'pipe15', rail: 'pipe15', infill: 'none', bp: 'bp44', run: 'level' },
+  { label: 'Stair handrail 36" @ 32° — pipe', system: 'handrail', height: 36, spacing: 48, post: 'pipe15', rail: 'pipe15', infill: 'none', bp: 'bp44', run: 'stairs', angle: 32 },
+  { label: 'Stair guardrail 42" @ 32° — pickets', system: 'guardrail', height: 42, spacing: 48, post: 'hss15', rail: 'hss15', infill: 'pickets', bp: 'bp44', run: 'stairs', angle: 32 },
+  { label: 'Heavy guardrail 42" — HSS 2x2', system: 'guardrail', height: 42, spacing: 60, post: 'hss2', rail: 'hss15', infill: 'mid2', bp: 'bp66', run: 'level' },
 ];
 
 export function showRailingDialog(onConfirm, prev) {
@@ -63,6 +65,15 @@ export function showRailingDialog(onConfirm, prev) {
         </label>
         <label>Height <input id="rl-height" value='42"'></label>
         <label>Max post spacing <input id="rl-spacing" value='48"'></label>
+      </div>
+      <div class="row">
+        <label>Run
+          <select id="rl-run">
+            <option value="level">Level (flat)</option>
+            <option value="stairs">Stairs (sloped)</option>
+          </select>
+        </label>
+        <label id="rl-angle-label">Stair angle (°) <input id="rl-angle" value="32"></label>
       </div>
       <div class="row">
         <label>Posts <select id="rl-post"></select></label>
@@ -98,6 +109,11 @@ export function showRailingDialog(onConfirm, prev) {
     fill('#rl-bp', BASEPLATES);
     fill('#rl-material', MATERIALS.map(m => ({ id: m.id, label: m.name })));
 
+    const syncAngle = () => {
+      dlg.querySelector('#rl-angle-label').style.display =
+        dlg.querySelector('#rl-run').value === 'stairs' ? '' : 'none';
+    };
+    dlg.querySelector('#rl-run').addEventListener('change', syncAngle);
     dlg.querySelector('#rl-preset').addEventListener('change', (ev) => {
       const p = PRESETS[parseInt(ev.target.value)];
       dlg.querySelector('#rl-system').value = p.system;
@@ -107,7 +123,11 @@ export function showRailingDialog(onConfirm, prev) {
       dlg.querySelector('#rl-rail').value = p.rail;
       dlg.querySelector('#rl-infill').value = p.infill;
       dlg.querySelector('#rl-bp').value = p.bp;
+      dlg.querySelector('#rl-run').value = p.run || 'level';
+      if (p.angle) dlg.querySelector('#rl-angle').value = String(p.angle);
+      syncAngle();
     });
+    syncAngle();
   }
 
   if (prev?.presetId != null) dlg.querySelector('#rl-preset').value = prev.presetId;
@@ -133,10 +153,17 @@ export function showRailingDialog(onConfirm, prev) {
         picket: { profile: bar(0.5, 0.5), spec: 'SQ 1/2 picket', size: { w: 0.5, h: 0.5 } },
       } : { type: 'none' };
 
+    const runType = dlg.querySelector('#rl-run').value;
+    const stairAngle = parseFloat(dlg.querySelector('#rl-angle').value) || 32;
+    if (runType === 'stairs' && (stairAngle < 10 || stairAngle > 50)) {
+      alert('Stair angle should be between 10° and 50°.');
+      return;
+    }
     onConfirm({
-      label: system === 'guardrail' ? 'Guardrail' : 'Handrail',
+      label: (runType === 'stairs' ? 'Stair ' : '') + (system === 'guardrail' ? 'Guardrail' : 'Handrail'),
       presetId: dlg.querySelector('#rl-preset').value,
       system, height, postSpacingMax: spacing,
+      runType, stairAngle,
       post: { profile: post.profile, spec: post.spec, size: post.size },
       topRail: { profile: rail.profile, spec: rail.spec, size: rail.size },
       infill,

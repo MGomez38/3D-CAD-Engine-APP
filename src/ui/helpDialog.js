@@ -57,6 +57,13 @@ export function showHelpDialog(app) {
             <tr><td>Double-click</td><td>Close a Line shape</td></tr>
             <tr><td>Entity panel</td><td>Edit sizes after placing (parametric)</td></tr>
           </table>
+          <h3>Deliverables</h3>
+          <ul class="help-list">
+            <li><b>Share</b> — link that opens your 3D model for any customer</li>
+            <li><b>Drawing Sheet</b> — scaled PDF with title block & cut list</li>
+            <li><b>DXF</b> — flat parts for plasma/laser · <b>PNG</b> — snapshot</li>
+            <li><b>Components</b> — save a selection, reuse it in any project</li>
+          </ul>
           <h3>Command line</h3>
           <p class="help-note">The box in the status bar accepts commands too:
           <code>wall</code>, <code>rec</code>, <code>dim</code>, <code>sheet</code>,
